@@ -38,7 +38,7 @@
 				>
 					<p class="lp-muted text-xs">{{ __('Website') }}</p>
 					<a
-						:href="contact.website"
+						:href="safeUrl(contact.website)"
 						target="_blank"
 						rel="noopener noreferrer"
 						class="font-medium text-[var(--lp-accent)] underline"
@@ -58,6 +58,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeUrl } from '@/utils/safeUrl'
 import { ref } from 'vue'
 import type { LandingContent } from '@/pages/Landing/content'
 

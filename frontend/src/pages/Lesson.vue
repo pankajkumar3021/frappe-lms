@@ -390,6 +390,7 @@ import {
 } from '@/utils/lessonProgress'
 import EditorJS from '@editorjs/editorjs'
 import LessonContent from '@/components/LessonContent.vue'
+import { renderMath } from '@/utils/math'
 import CourseInstructors from '@/components/CourseInstructors.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import Discussions from '@/components/Discussions.vue'
@@ -707,7 +708,10 @@ const renderEditor = (holder: string, content: string): EditorJS | null => {
 		i18n: {
 			direction: document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr',
 		},
-		onReady: () => openLinksInNewTab(holder),
+		onReady: () => {
+			openLinksInNewTab(holder)
+			void renderMath(document.getElementById(holder))
+		},
 	})
 }
 

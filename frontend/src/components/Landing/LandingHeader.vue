@@ -7,7 +7,7 @@
 			>
 				<img
 					v-if="brand.logo"
-					:src="brand.logo"
+					:src="safeUrl(brand.logo)"
 					alt=""
 					class="h-8 w-auto max-w-[140px] object-contain"
 				/>
@@ -21,7 +21,7 @@
 				<a
 					v-for="link in links"
 					:key="link.href"
-					:href="link.href"
+					:href="safeUrl(link.href)"
 					class="lp-nav-link"
 					>{{ link.label }}</a
 				>
@@ -55,7 +55,7 @@
 			<a
 				v-for="link in links"
 				:key="link.href"
-				:href="link.href"
+				:href="safeUrl(link.href)"
 				class="lp-mobile-link"
 				@click="menuOpen = false"
 			>
@@ -69,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeUrl } from '@/utils/safeUrl'
 import { ref } from 'vue'
 
 defineProps<{ brand: { name: string; logo: string | null } }>()

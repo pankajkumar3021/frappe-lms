@@ -23,7 +23,7 @@
 				<p v-if="slide.text" class="lp-slide-text">{{ slide.text }}</p>
 				<div v-if="slide.cta.label && slide.cta.href" class="mt-3">
 					<a
-						:href="slide.cta.href"
+						:href="safeUrl(slide.cta.href)"
 						class="lp-btn-primary no-underline"
 						:target="isExternal(slide.cta.href) ? '_blank' : undefined"
 						:rel="
@@ -69,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeUrl } from '@/utils/safeUrl'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { LandingContent } from '@/pages/Landing/content'
 
