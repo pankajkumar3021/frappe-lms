@@ -6,6 +6,7 @@
 #   scripts/deploy/deploy.sh rollback           restart the previous image
 #   scripts/deploy/deploy.sh backup             take a database + files backup now
 #   scripts/deploy/deploy.sh status             show running containers and image tags
+#   scripts/deploy/deploy.sh mcp                set up the MCP agents for Claude Code on the server
 #
 # Options for deploy:
 #   --ref <git-ref>   git ref to build (default: value in deploy.env, else main)
@@ -332,6 +333,87 @@ cmd_setup() {
 	log "Setup finished. Put a reverse proxy in front of 127.0.0.1:8000 for https://$SITE_NAME"
 }
 
+# ---------------------------------------------------------------- mcp
+
+# The script that runs on the server. API secrets are written to token files there
+# and never printed or sent back to the laptop.
+mcp_remote_script() {
+	local dir site
+	printf -v dir '%q' "$DEPLOY_DIR"
+	printf -v site '%q' "$SITE_NAME"
+	cat <<EOF
+set -euo pipefail
+DIR=$dir
+SITE=$site
+cd "\$DIR"
+mkdir -p mcp && chmod 700 mcp
+# Requests from the server's own shell reach the app container from this address.
+GW=\$(docker network inspect lms-prod_default -f '{{(index .IPAM.Config 0).Gateway}}')
+[ -n "\$GW" ] || { echo "error: could not find the gateway of the lms-prod_default network" >&2; exit 1; }
+OUT=\$(mktemp)
+trap 'rm -f "\$OUT"' EXIT
+docker compose --project-directory "\$DIR" -f "\$DIR/compose.yml" --env-file "\$DIR/.env" \\
+	exec -T -e AGENT_IP="\$GW" -e AGENT_DOMAIN="\$SITE" app bench --site "\$SITE" console > "\$OUT" 2>&1 <<'PY'
+$(mcp_python)
+PY
+umask 077
+grep -oE 'TOKEN (course-agent|enrolment-agent) [A-Za-z0-9]+:[A-Za-z0-9]+' "\$OUT" | while read -r _ name tok; do
+	printf '%s\n' "\$tok" > "mcp/\$name.token"
+done
+grep -oE 'STATUS .*' "\$OUT" || { echo "error: the MCP setup did not report back" >&2; grep -v 'TOKEN' "\$OUT" | tail -20 >&2; exit 1; }
+EOF
+}
+
+# Python for bench console. IPython needs the blank line after the for block.
+mcp_python() {
+	cat <<'PY'
+import os, frappe
+from frappe.core.doctype.user.user import generate_keys
+frappe.db.set_single_value("System Settings", "enable_mcp", 1)
+domain = os.environ["AGENT_DOMAIN"]; ip = os.environ["AGENT_IP"]
+agents = [("course-agent", "Course", "Creator", ["Course Creator", "Desk User"]), ("enrolment-agent", "Enrolment", "Manager", ["Moderator", "Desk User"])]
+for slug, first, last, roles in agents:
+    email = slug + "@" + domain
+    if not frappe.db.exists("User", email):
+        frappe.get_doc({"doctype": "User", "email": email, "first_name": first, "last_name": last, "send_welcome_email": 0}).insert(ignore_permissions=True)
+    user = frappe.get_doc("User", email)
+    user.add_roles(*roles)
+    user.restrict_ip = ip
+    user.save(ignore_permissions=True)
+    secret = generate_keys(email)["api_secret"]
+    frappe.db.commit()
+    print("TOKEN", slug, frappe.db.get_value("User", email, "api_key") + ":" + secret)
+    print("STATUS", email, "| roles:", ", ".join(r for r in roles if r in frappe.get_roles(email)), "| restricted to:", ip)
+
+PY
+}
+
+cmd_mcp() {
+	load_config
+	check_local_tools
+	check_server
+	log "Setting up the MCP agents on $SITE_NAME"
+	info "course-agent@$SITE_NAME     Course Creator, Desk User"
+	info "enrolment-agent@$SITE_NAME  Moderator, Desk User"
+	info "Running this again issues new keys; the previous keys stop working."
+	if [[ $DRY_RUN -eq 1 ]]; then
+		printf '    [dry-run] on %s: enable MCP, create or update both agents, restrict them to the Docker gateway IP,\n' "$DEPLOY_HOST"
+		printf '              write new tokens to %s/mcp/<agent>.token (mode 600)\n' "$DEPLOY_DIR"
+	else
+		mcp_remote_script | remote "bash -s"
+	fi
+
+	log "On the server, register the agents with Claude Code"
+	local agent server
+	for agent in course-agent enrolment-agent; do
+		[[ $agent == course-agent ]] && server="lms-courses" || server="lms-enrolment"
+		printf '    claude mcp add --scope user --transport http %s http://127.0.0.1:8000/api/v2/mcp --header "Authorization: token $(cat %s/mcp/%s.token)" --header "Host: %s"\n' \
+			"$server" "$DEPLOY_DIR" "$agent" "$SITE_NAME"
+	done
+	info "The token files belong to the SSH user. Copy them to the account that runs Claude Code if that is a different user."
+	info "Check with: claude mcp list   (both should show Connected)"
+}
+
 # ---------------------------------------------------------------- args
 
 COMMAND="${1:-}"
@@ -341,7 +423,7 @@ while [[ $# -gt 0 ]]; do
 		--ref) REF_OVERRIDE="${2:?--ref needs a value}"; shift ;;
 		--migrate) MIGRATE=1 ;;
 		--dry-run) DRY_RUN=1 ;;
-		-h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+		-h|--help) sed -n '2,17p' "$0"; exit 0 ;;
 		*) die "unknown option: $1" ;;
 	esac
 	shift
@@ -353,5 +435,6 @@ case "$COMMAND" in
 	rollback) cmd_rollback ;;
 	backup) cmd_backup ;;
 	status) cmd_status ;;
-	*) sed -n '2,16p' "$0"; exit 2 ;;
+	mcp) cmd_mcp ;;
+	*) sed -n '2,17p' "$0"; exit 2 ;;
 esac
