@@ -45,7 +45,7 @@
 			>
 				<img
 					v-if="course.image"
-					:src="course.image"
+					:src="safeUrl(course.image)"
 					alt=""
 					class="aspect-video w-full max-w-full rounded-lg object-cover"
 				/>
@@ -71,7 +71,7 @@
 				</p>
 				<div class="mt-auto pt-2">
 					<a
-						:href="`/lms/courses/${course.name}`"
+						:href="safeUrl(`/lms/courses/${course.name}`)"
 						class="lp-btn-secondary no-underline"
 						>{{ __('View course') }}</a
 					>
@@ -82,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeUrl } from '@/utils/safeUrl'
 import { computed, ref } from 'vue'
 import { createResource } from 'frappe-ui'
 
