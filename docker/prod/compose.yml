@@ -40,11 +40,24 @@ services:
       gunicorn --chdir /home/frappe/frappe-bench/sites
       -b 0.0.0.0:8000 -w 4 --timeout 120
       --preload frappe.app:application
-    ports:
-      - "127.0.0.1:8000:8000"
     healthcheck:
       # Frappe picks the site by host name, so the check must name the site.
       test: ["CMD", "curl", "-fsS", "-H", "Host: ${SITE_NAME:?set SITE_NAME in .env}", "http://127.0.0.1:8000/api/method/ping"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+
+  # Serves /assets and /files itself and passes everything else to the app.
+  # The host's nginx proxies to this, on 127.0.0.1:8000.
+  frontend:
+    <<: *app
+    command: nginx -c /home/frappe/nginx.conf -e /dev/stderr -g "daemon off;"
+    depends_on:
+      - app
+    ports:
+      - "127.0.0.1:8000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-H", "Host: ${SITE_NAME:?set SITE_NAME in .env}", "http://127.0.0.1:8080/api/method/ping"]
       interval: 20s
       timeout: 5s
       retries: 6

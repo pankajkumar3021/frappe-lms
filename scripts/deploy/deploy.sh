@@ -23,6 +23,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG="$SCRIPT_DIR/deploy.env"
 CONTAINERFILE="$REPO_DIR/docker/prod/Containerfile"
 COMPOSE_FILE="$REPO_DIR/docker/prod/compose.yml"
+# Files the Containerfile copies into the image, besides the app itself.
+IMAGE_FILES=("$REPO_DIR/docker/prod/nginx.conf" "$REPO_DIR/docker/prod/entrypoint.sh")
+image_files_hash() { cat "$CONTAINERFILE" "${IMAGE_FILES[@]}" | sha256sum | cut -c1-8; }
 PLATFORM_DEFAULT="linux/amd64"
 
 DRY_RUN=0
@@ -139,15 +142,16 @@ build_image() {
 	if [[ -n "$(git -C "$REPO_DIR" status --porcelain -- lms frontend docker 2>/dev/null)" ]]; then
 		printf 'warning: uncommitted changes under lms/, frontend/ or docker/ are NOT in the image; only %s is built\n' "$ref" >&2
 	fi
-	# The Containerfile comes from the working tree, not from the ref, so its hash is
-	# part of the tag: a changed Containerfile must not reuse an old image's tag.
-	tag="$IMAGE_REPO:$sha-$(sha256sum "$CONTAINERFILE" | cut -c1-8)"
+	# The Containerfile and its files come from the working tree, not from the ref,
+	# so their hash is part of the tag: a change to them must not reuse an old tag.
+	tag="$IMAGE_REPO:$sha-$(image_files_hash)"
 	ctx="$(mktemp -d)"
 	BUILD_CTX="$ctx"
 	mkdir -p "$ctx/lms-src"
 	# A clean export of the ref, not the working tree.
 	git -C "$REPO_DIR" archive --format=tar "$ref" | tar -x -C "$ctx/lms-src"
 	cp "$CONTAINERFILE" "$ctx/Containerfile"
+	cp "${IMAGE_FILES[@]}" "$ctx/"
 	# Host networking avoids the flaky DNS of Docker's build network on some laptops.
 	# UV_DEFAULT_INDEX lets the build use a faster PyPI mirror.
 	local build_args=(--build-arg "LMS_VERSION=$sha")
@@ -230,7 +234,7 @@ cmd_deploy() {
 	if [[ $DRY_RUN -eq 1 ]]; then
 		local sha
 		sha="$(git -C "$REPO_DIR" rev-parse --short=12 "$ref^{commit}" 2>/dev/null || echo "<sha of $ref>")"
-		BUILT_TAG="$IMAGE_REPO:$sha-$(sha256sum "$CONTAINERFILE" | cut -c1-8)"
+		BUILT_TAG="$IMAGE_REPO:$sha-$(image_files_hash)"
 		printf '    [dry-run] docker build of %s from %s\n' "$BUILT_TAG" "$ref"
 	else
 		build_image "$ref"
@@ -247,9 +251,13 @@ cmd_deploy() {
 	[[ -n "$previous" ]] && info "Currently running: $previous"
 
 	log "Restarting the application containers"
+	# The compose file can change with the image (new services, ports), so it ships
+	# too. The previous one is kept for rollback.
+	run "Copy the production compose file to the server (previous kept as compose.yml.previous)" \
+		bash -c "ssh ${SSH_OPTS[*]} '$DEPLOY_HOST' 'cp -f $DEPLOY_DIR/compose.yml $DEPLOY_DIR/compose.yml.previous' && scp -q ${SSH_OPTS[*]} '$COMPOSE_FILE' '$DEPLOY_HOST:$DEPLOY_DIR/compose.yml'"
 	set_remote_image "$BUILT_TAG"
-	run "Recreate app, worker, scheduler and socketio (database and Redis untouched)" \
-		remote "$(rcompose up -d --no-deps app worker scheduler socketio)"
+	run "Recreate app, frontend, worker, scheduler and socketio (database and Redis untouched)" \
+		remote "$(rcompose up -d --no-deps app frontend worker scheduler socketio)"
 
 	if [[ $MIGRATE -eq 1 ]]; then
 		log "Migrating $SITE_NAME (schema changes; backup already taken)"
@@ -272,9 +280,15 @@ cmd_deploy() {
 
 rollback_to() {
 	local tag="$1"
+	# Put back the compose file that went with the previous image, if the deploy
+	# saved one, so an older image is not started with services it cannot run.
+	run "Restore the previous compose file, if there is one" \
+		remote "if [ -f '$DEPLOY_DIR/compose.yml.previous' ]; then cp -f '$DEPLOY_DIR/compose.yml' '$DEPLOY_DIR/compose.yml.failed' && mv -f '$DEPLOY_DIR/compose.yml.previous' '$DEPLOY_DIR/compose.yml'; fi"
 	set_remote_image "$tag"
+	# No service list: services missing from the restored file are removed as
+	# orphans. The database and Redis are unchanged, so Compose leaves them running.
 	run "Restart app containers on $tag" \
-		remote "$(rcompose up -d --no-deps app worker scheduler socketio)"
+		remote "$(rcompose up -d --remove-orphans)"
 	[[ $DRY_RUN -eq 1 ]] || record_state "$tag"
 }
 
@@ -379,11 +393,11 @@ cmd_setup() {
 			echo
 			[[ ${#ADMIN_PW} -ge 8 ]] || die "admin password must be at least 8 characters"
 		fi
-		printf '%s\n' "$ADMIN_PW" | remote_stdin "read -r ADMIN_PASSWORD && export ADMIN_PASSWORD && $(rcompose run --rm --no-deps -T -e ADMIN_PASSWORD app sh -c "bench new-site $SITE_NAME --mariadb-root-password \"\$DB_ROOT_PASSWORD\" --admin-password \"\$ADMIN_PASSWORD\" --no-mariadb-socket && bench --site $SITE_NAME install-app payments && bench --site $SITE_NAME install-app lms && bench use $SITE_NAME")"
+		printf '%s\n' "$ADMIN_PW" | remote_stdin "read -r ADMIN_PASSWORD && export ADMIN_PASSWORD && $(rcompose run --rm --no-deps -T -e ADMIN_PASSWORD app sh -c "bench new-site $SITE_NAME --mariadb-root-password \"\$DB_ROOT_PASSWORD\" --admin-password \"\$ADMIN_PASSWORD\" --no-mariadb-socket && bench --site $SITE_NAME install-app payments && bench --site $SITE_NAME install-app lms && bench --site $SITE_NAME enable-scheduler && bench use $SITE_NAME")"
 	fi
 
 	log "Starting the application"
-	run "Start app, worker, scheduler and socketio" remote "$(rcompose up -d app worker scheduler socketio)"
+	run "Start app, frontend, worker, scheduler and socketio" remote "$(rcompose up -d app frontend worker scheduler socketio)"
 	wait_healthy || die "the site did not answer; check: scripts/deploy/deploy.sh status"
 	[[ $DRY_RUN -eq 1 ]] || record_state "$BUILT_TAG"
 	log "Setup finished. Put a reverse proxy in front of 127.0.0.1:8000 for https://$SITE_NAME"

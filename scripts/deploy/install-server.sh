@@ -118,6 +118,10 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
+        # Frappe's socket server checks Origin against Host, and browsers omit
+        # Origin on same-site GET requests (as in Frappe's own nginx template).
+        proxy_set_header Origin \$scheme://\$http_host;
+        proxy_set_header X-Frappe-Site-Name $DOMAIN;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 
