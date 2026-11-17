@@ -83,6 +83,19 @@ export async function guardNavigation(to, from, next) {
 	return next()
 }
 
+// The site root serves this app too (the home_page hook), so Home shows the
+// bare domain instead of /lms/. The router keeps its /lms base for every other
+// page, and reloading "/" loads the app at Home again.
+export function showHomeAtSiteRoot(to) {
+	if (to.name !== 'Home' || window.location.pathname === '/') return
+	window.history.replaceState(
+		window.history.state,
+		'',
+		'/' + window.location.search + window.location.hash,
+	)
+}
+
 router.beforeEach(guardNavigation)
+router.afterEach(showHomeAtSiteRoot)
 
 export default router

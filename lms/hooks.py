@@ -54,7 +54,9 @@ web_include_js = []
 # ----------
 
 # application home page (will override Website Settings)
-# home_page = "login"
+# The site root renders the LMS app in place (no redirect), so guests see the
+# landing page at "/" and the address bar keeps the bare domain.
+home_page = get_lms_path()
 
 # website user home page (by Role)
 # role_home_page = {
@@ -283,7 +285,6 @@ website_route_rules = [
 
 website_redirects = [
 	{"source": "/update-profile", "target": "/edit-profile"},
-	{"source": "/", "target": f"/{get_lms_path()}"},
 	{"source": "/courses", "target": f"/{get_lms_path()}/courses"},
 	{
 		"source": r"^/courses/.*$",
