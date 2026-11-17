@@ -44,6 +44,10 @@ vi.mock('frappe-ui', () => ({
 		return resource
 	},
 }))
+vi.mock('vue-router', () => ({
+	useRoute: () => ({ query: {} }),
+	useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+}))
 vi.mock('@/utils/', () => ({
 	formatAmount: (a: unknown) => String(a),
 	formatRating: (r: unknown) => String(r),

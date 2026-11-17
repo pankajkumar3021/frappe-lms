@@ -151,6 +151,7 @@
 <script setup lang="ts">
 import { computed, inject, watch } from 'vue'
 import { createResource, Badge } from 'frappe-ui'
+import { useRoute, useRouter } from 'vue-router'
 import { formatAmount, formatRating } from '@/utils/'
 import type {
 	CourseDetails,
@@ -166,12 +167,35 @@ import CourseInstructors from '@/components/CourseInstructors.vue'
 import CourseCreatorCard from '@/components/CourseCreatorCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import RelatedCourses from '@/components/RelatedCourses.vue'
+import {
+	ENROLL_AFTER_LOGIN,
+	canSelfEnroll,
+	useCourseEnrollment,
+} from '@/composables/useCourseEnrollment'
 
 const props = defineProps<{
 	course: Resource<CourseDetails | null>
 }>()
 
 const user = inject<SessionUser>('$user')
+const route = useRoute()
+const router = useRouter()
+const { enroll } = useCourseEnrollment(user!)
+
+// A guest who pressed Enroll comes back from login (password or Google) with
+// ?enroll=1. Finish that enrollment once both the course and the user are
+// loaded. The page does this, not CourseCardOverlay, because the overlay is
+// mounted twice (desktop and mobile) and would enroll twice.
+watch(
+	() => [props.course.data, user?.data] as const,
+	([course, member]) => {
+		if (route.query[ENROLL_AFTER_LOGIN] !== '1' || !course || !member) return
+		const { [ENROLL_AFTER_LOGIN]: _done, ...query } = route.query
+		router.replace({ query })
+		if (canSelfEnroll(course, member)) enroll(course.name)
+	},
+	{ immediate: true }
+)
 
 const isCourseInstructor = computed<boolean>(() =>
 	(props.course.data?.instructors || []).some(
