@@ -150,10 +150,8 @@
 </template>
 <script setup lang="ts">
 import { computed, inject, watch } from 'vue'
-import { Alert, Button, call, createResource, toast } from 'frappe-ui'
-import type { FrappeResourceError } from 'frappe-ui'
-import { resourceErrorMessage } from '@/utils/resource'
-import { useRouter } from 'vue-router'
+import { Alert, Button, createResource } from 'frappe-ui'
+import { useCourseEnrollment } from '@/composables/useCourseEnrollment'
 import CertificationLinks from '@/components/CertificationLinks.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import VideoPreview from '@/components/VideoPreview.vue'
@@ -161,7 +159,6 @@ import { openExternal } from '@/utils/openExternal'
 import type { CourseDetails, Resource, SessionUser } from '@/types'
 import { isInstructorOf } from '@/utils/instructors'
 
-const router = useRouter()
 const user = inject<SessionUser>('$user')!
 const readOnlyMode = (window as Window & { read_only_mode?: boolean })
 	.read_only_mode
@@ -173,41 +170,11 @@ const props = withDefaults(
 	{}
 )
 
+const { enroll } = useCourseEnrollment(user)
+
 function enrollStudent() {
-	if (!user.data) {
-		toast.warning(__('You need to login first to enroll for this course'))
-		setTimeout(() => {
-			window.location.href = `/login?redirect-to=${window.location.pathname}`
-		}, 500)
-		return
-	}
 	const courseName = props.course.data?.name
-	if (!courseName) return
-	call('frappe.client.insert', {
-		doc: {
-			doctype: 'LMS Enrollment',
-			course: courseName,
-			member: user.data.name,
-		},
-	})
-		.then(() => {
-			toast.success(__('You have been enrolled in this course'))
-			setTimeout(() => {
-				router.push({
-					name: 'Lesson',
-					params: {
-						courseName,
-						chapterNumber: 1,
-						lessonNumber: 1,
-					},
-				})
-			}, 1000)
-		})
-		.catch((err: FrappeResourceError) => {
-			const msg = resourceErrorMessage(err, 'Error')
-			toast.warning(__(msg))
-			console.error(err)
-		})
+	if (courseName) enroll(courseName)
 }
 
 const is_instructor = (): boolean =>
