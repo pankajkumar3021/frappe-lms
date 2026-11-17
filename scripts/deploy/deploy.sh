@@ -21,11 +21,11 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG="$SCRIPT_DIR/deploy.env"
-CONTAINERFILE="$REPO_DIR/docker/prod/Containerfile"
 COMPOSE_FILE="$REPO_DIR/docker/prod/compose.yml"
-# Files the Containerfile copies into the image, besides the app itself.
-IMAGE_FILES=("$REPO_DIR/docker/prod/nginx.conf" "$REPO_DIR/docker/prod/entrypoint.sh")
-image_files_hash() { cat "$CONTAINERFILE" "${IMAGE_FILES[@]}" | sha256sum | cut -c1-8; }
+# The image's build files, as repo paths; their content at the built commit is
+# part of the image tag.
+IMAGE_FILES=(docker/prod/Containerfile docker/prod/nginx.conf docker/prod/entrypoint.sh)
+BUILD_SHA=""
 PLATFORM_DEFAULT="linux/amd64"
 
 DRY_RUN=0
@@ -62,6 +62,15 @@ load_config() {
 	: "${REF:=main}"
 	: "${IMAGE_REPO:=lms-prod}"
 	: "${PLATFORM:=$PLATFORM_DEFAULT}"
+	# server: the server fetches the commit from GitHub and builds it (no image
+	# upload). laptop: build here and copy the image over SSH.
+	: "${BUILD_ON:=server}"
+	[[ $BUILD_ON == server || $BUILD_ON == laptop ]] || die "BUILD_ON must be server or laptop"
+	if [[ -z "${REPO_URL:-}" ]]; then
+		REPO_URL="$(git -C "$REPO_DIR" remote get-url origin)"
+		# The server clones anonymously, so use HTTPS for a GitHub SSH remote.
+		[[ $REPO_URL == git@github.com:* ]] && REPO_URL="https://github.com/${REPO_URL#git@github.com:}"
+	fi
 }
 
 # All SSH calls share one connection (ControlMaster), so a run makes one
@@ -126,40 +135,90 @@ check_server() {
 
 # ---------------------------------------------------------------- build
 
-build_image() {
-	local ref="$1" sha tag ctx upstream
+# Work out which commit to build and its image tag. The tag is the commit plus a
+# hash of the image files (Containerfile, nginx.conf, entrypoint.sh) at that
+# commit, so a change to either gives a new tag.
+resolve_build() {
+	local ref="$1" upstream f
+	git -C "$REPO_DIR" fetch -q origin || die "could not fetch from origin"
 	# Refuse to build a local branch that differs from GitHub, so a stale branch
 	# is never deployed by accident.
-	git -C "$REPO_DIR" fetch -q origin || die "could not fetch from origin"
 	if upstream="$(git -C "$REPO_DIR" rev-parse -q --verify "origin/$ref^{commit}")"; then
 		[[ "$(git -C "$REPO_DIR" rev-parse "$ref^{commit}")" == "$upstream" ]] ||
 			die "local '$ref' differs from origin/$ref. Update it first: git fetch origin && git branch -f $ref origin/$ref"
 	fi
-	sha="$(git -C "$REPO_DIR" rev-parse --short=12 "$ref^{commit}")" \
-		|| die "git ref '$ref' does not exist"
-	# The image is built from the committed ref, not the working tree. Warn when the
-	# working tree differs, so nobody thinks local edits are in the image.
+	BUILD_SHA="$(git -C "$REPO_DIR" rev-parse "$ref^{commit}")" || die "git ref '$ref' does not exist"
+	git -C "$REPO_DIR" merge-base --is-ancestor "$BUILD_SHA" "origin/$ref" 2>/dev/null ||
+		git -C "$REPO_DIR" branch -r --contains "$BUILD_SHA" | grep -q . ||
+		die "$ref ($BUILD_SHA) is not on GitHub; push it first"
+	# The image is built from the commit, never the working tree.
 	if [[ -n "$(git -C "$REPO_DIR" status --porcelain -- lms frontend docker 2>/dev/null)" ]]; then
 		printf 'warning: uncommitted changes under lms/, frontend/ or docker/ are NOT in the image; only %s is built\n' "$ref" >&2
 	fi
-	# The Containerfile and its files come from the working tree, not from the ref,
-	# so their hash is part of the tag: a change to them must not reuse an old tag.
-	tag="$IMAGE_REPO:$sha-$(image_files_hash)"
+	BUILT_TAG="$IMAGE_REPO:${BUILD_SHA:0:12}-$(
+		for f in "${IMAGE_FILES[@]}"; do git -C "$REPO_DIR" show "$BUILD_SHA:$f" 2>/dev/null; done |
+			sha256sum | cut -c1-8
+	)"
+}
+
+build_image() {
+	resolve_build "$1"
+	if [[ $BUILD_ON == server ]]; then
+		build_on_server
+	else
+		build_on_laptop
+	fi
+}
+
+# The server fetches the commit from GitHub and builds it there, so no image
+# crosses the network. Its build cache makes a code-only change quick.
+build_on_server() {
+	if [[ $DRY_RUN -eq 1 ]]; then
+		printf '    [dry-run] on %s: fetch %s from %s and build %s\n' "$DEPLOY_HOST" "${BUILD_SHA:0:12}" "$REPO_URL" "$BUILT_TAG"
+		return 0
+	fi
+	info "Build $BUILT_TAG on $DEPLOY_HOST from $REPO_URL at ${BUILD_SHA:0:12}"
+	remote_stdin "bash -s -- $(printf '%q ' "$REPO_URL" "$BUILD_SHA" "$BUILT_TAG" "$DEPLOY_DIR" "$PLATFORM")" <<'REMOTE'
+set -Eeuo pipefail
+repo_url="$1" sha="$2" tag="$3" dir="$4" platform="$5"
+if docker image inspect "$tag" >/dev/null 2>&1; then
+	echo "    the server already has $tag; not building it again"
+	exit 0
+fi
+src="$dir/src/repo"
+if [ ! -d "$src/.git" ]; then
+	mkdir -p "$dir/src"
+	git clone -q --filter=blob:none --no-checkout "$repo_url" "$src"
+fi
+git -C "$src" remote set-url origin "$repo_url"
+git -C "$src" fetch -q origin "$sha"
+ctx="$(mktemp -d)"
+trap 'rm -rf "$ctx"' EXIT
+mkdir "$ctx/lms-src"
+git -C "$src" archive "$sha" | tar -x -C "$ctx/lms-src"
+cp "$ctx/lms-src/docker/prod/Containerfile" "$ctx/lms-src/docker/prod/nginx.conf" \
+	"$ctx/lms-src/docker/prod/entrypoint.sh" "$ctx/"
+docker build --network host --platform "$platform" --build-arg "LMS_VERSION=${sha:0:12}" \
+	-t "$tag" -f "$ctx/Containerfile" "$ctx"
+REMOTE
+}
+
+# Build here and copy the image to the server afterwards (ship_image).
+build_on_laptop() {
+	local ctx
 	ctx="$(mktemp -d)"
 	BUILD_CTX="$ctx"
 	mkdir -p "$ctx/lms-src"
-	# A clean export of the ref, not the working tree.
-	git -C "$REPO_DIR" archive --format=tar "$ref" | tar -x -C "$ctx/lms-src"
-	cp "$CONTAINERFILE" "$ctx/Containerfile"
-	cp "${IMAGE_FILES[@]}" "$ctx/"
+	git -C "$REPO_DIR" archive --format=tar "$BUILD_SHA" | tar -x -C "$ctx/lms-src"
+	cp "$ctx/lms-src/docker/prod/Containerfile" "$ctx/lms-src/docker/prod/nginx.conf" \
+		"$ctx/lms-src/docker/prod/entrypoint.sh" "$ctx/"
 	# Host networking avoids the flaky DNS of Docker's build network on some laptops.
 	# UV_DEFAULT_INDEX lets the build use a faster PyPI mirror.
-	local build_args=(--build-arg "LMS_VERSION=$sha")
+	local build_args=(--build-arg "LMS_VERSION=${BUILD_SHA:0:12}")
 	[[ -n "${UV_DEFAULT_INDEX:-}" ]] && build_args+=(--build-arg "UV_DEFAULT_INDEX=$UV_DEFAULT_INDEX")
-	run "Build image $tag from $ref ($sha) for $PLATFORM" \
+	run "Build image $BUILT_TAG from ${BUILD_SHA:0:12} on this laptop for $PLATFORM" \
 		docker build --network "${BUILD_NETWORK:-host}" --platform "$PLATFORM" -f "$ctx/Containerfile" \
-			"${build_args[@]}" -t "$tag" "$ctx"
-	BUILT_TAG="$tag"
+			"${build_args[@]}" -t "$BUILT_TAG" "$ctx"
 }
 
 # ---------------------------------------------------------------- ship
@@ -167,14 +226,15 @@ build_image() {
 ship_image() {
 	local tag="$1"
 	if [[ $DRY_RUN -eq 0 ]] && remote "docker image inspect $(printf '%q' "$tag") >/dev/null 2>&1"; then
-		info "$DEPLOY_HOST already has $tag; not copying it again"
+		info "$DEPLOY_HOST already has $tag; nothing to copy"
 		return 0
 	fi
 	if [[ $DRY_RUN -eq 1 ]]; then
+		[[ $BUILD_ON == server ]] && return 0
 		printf '    [dry-run] copy %s to %s over SSH (docker save | gzip | ssh docker load)\n' "$tag" "$DEPLOY_HOST"
 		return 0
 	fi
-	info "Copy $tag to $DEPLOY_HOST over SSH (no registry)"
+	info "Copy $tag to $DEPLOY_HOST over SSH (docker save | gzip | docker load)"
 	docker save "$tag" | gzip | ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" 'gunzip | docker load'
 }
 
@@ -230,15 +290,8 @@ cmd_deploy() {
 	check_server
 	local ref="${REF_OVERRIDE:-$REF}"
 
-	log "Building $IMAGE_REPO from $ref"
-	if [[ $DRY_RUN -eq 1 ]]; then
-		local sha
-		sha="$(git -C "$REPO_DIR" rev-parse --short=12 "$ref^{commit}" 2>/dev/null || echo "<sha of $ref>")"
-		BUILT_TAG="$IMAGE_REPO:$sha-$(image_files_hash)"
-		printf '    [dry-run] docker build of %s from %s\n' "$BUILT_TAG" "$ref"
-	else
-		build_image "$ref"
-	fi
+	log "Building $IMAGE_REPO from $ref (on the $BUILD_ON)"
+	build_image "$ref"
 
 	log "Backing up before the change"
 	backup
@@ -267,7 +320,9 @@ cmd_deploy() {
 
 	log "Checking the site"
 	if wait_healthy; then
+		clear_site_cache
 		[[ $DRY_RUN -eq 1 ]] || record_state "$BUILT_TAG"
+		prune_images
 		log "Deployed $BUILT_TAG to $DEPLOY_HOST"
 	else
 		printf 'The site did not answer after the deploy. Rolling back.\n' >&2
@@ -276,6 +331,20 @@ cmd_deploy() {
 		fi
 		die "deploy failed; the previous image is running. Database was not restored."
 	fi
+}
+
+# Keep only the running image and the previous one (for rollback); older images
+# just take disk space. The build cache is kept, so later builds stay fast.
+prune_images() {
+	run "Remove $IMAGE_REPO images other than the current and previous ones" \
+		remote "keep=\" \$(cat '$DEPLOY_DIR/state/current' 2>/dev/null) \$(cat '$DEPLOY_DIR/state/previous' 2>/dev/null) \"; for img in \$(docker images $IMAGE_REPO --format '{{.Repository}}:{{.Tag}}'); do case \"\$keep\" in *\" \$img \"*|*\" \$img\") ;; *) docker image rm \"\$img\" >/dev/null 2>&1 && echo \"    removed \$img\" || true ;; esac; done"
+}
+
+# Frappe keeps routes, redirects and hooks in Redis, which a new image does not
+# reset: without this, an old redirect can outlive the code that defined it.
+clear_site_cache() {
+	run "Clear the site cache" \
+		remote "$(rcompose exec -T app sh -c "bench --site $SITE_NAME clear-cache && bench --site $SITE_NAME clear-website-cache")"
 }
 
 rollback_to() {
@@ -289,6 +358,7 @@ rollback_to() {
 	# orphans. The database and Redis are unchanged, so Compose leaves them running.
 	run "Restart app containers on $tag" \
 		remote "$(rcompose up -d --remove-orphans)"
+	clear_site_cache
 	[[ $DRY_RUN -eq 1 ]] || record_state "$tag"
 }
 
