@@ -70,7 +70,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # wkhtmltopdf is not packaged for Debian trixie; PDF generation needs it installed separately. Build packages are not installed here.
 RUN apt-get -o Acquire::Retries=5 update \
  && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-      ca-certificates curl git tini \
+      ca-certificates curl git tini mariadb-client \
       libmariadb3 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
       libjpeg62-turbo libxrender1 libxext6 fontconfig fonts-dejavu-core \
       libffi8 libssl3t64 libsqlite3-0 libbz2-1.0 liblzma5 libreadline8t64 zlib1g libncursesw6 \
@@ -95,6 +95,7 @@ WORKDIR /home/frappe/frappe-bench
 
 # Smoke test: fails the build if the copied Python, Node or the app do not start.
 RUN node --version \
+ && mariadb --version \
  && node -e "require('/home/frappe/frappe-bench/apps/frappe/node_modules/socket.io')" \
  && python -c "import frappe, MySQLdb; print('frappe', frappe.__version__)" \
  && bench --version

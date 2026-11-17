@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy Frappe LMS to a production server from this laptop over SSH.
 #
+#   scripts/deploy/deploy.sh install            prepare the server: Docker, folder, nginx site, HTTPS
 #   scripts/deploy/deploy.sh setup              first-time setup of a new server
 #   scripts/deploy/deploy.sh deploy [options]   build the image, back up, ship, restart
 #   scripts/deploy/deploy.sh rollback           restart the previous image
@@ -60,7 +61,37 @@ load_config() {
 	: "${PLATFORM:=$PLATFORM_DEFAULT}"
 }
 
-remote() { ssh -o BatchMode=yes "$DEPLOY_HOST" "$@"; }
+# All SSH calls share one connection (ControlMaster), so a run makes one
+# handshake instead of dozens. sshd drops new connections when too many arrive
+# at once, and that broke a setup run part-way.
+SSH_OPTS=(
+	-o BatchMode=yes
+	-o ConnectTimeout=15
+	-o ServerAliveInterval=30
+	-o ControlMaster=auto
+	-o "ControlPath=$HOME/.ssh/lms-deploy-%C"
+	-o ControlPersist=120
+)
+
+# Run a command on the server. -n keeps ssh off this script's stdin, so a remote
+# call never swallows input meant for a later prompt (the setup password).
+# Exit 255 means ssh itself failed to connect, so that is retried; any other
+# exit code is the remote command's own result and is returned as is.
+remote() {
+	local attempt rc
+	for attempt in 1 2 3; do
+		rc=0
+		ssh -n "${SSH_OPTS[@]}" "$DEPLOY_HOST" "$@" || rc=$?
+		[[ $rc -ne 255 ]] && return $rc
+		printf '    ssh connection failed (attempt %s of 3); retrying\n' "$attempt" >&2
+		sleep $((attempt * 5))
+	done
+	return $rc
+}
+
+# The same, for the few calls that send data to the server on stdin. Not
+# retried: the input is consumed by the first attempt.
+remote_stdin() { ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "$@"; }
 
 # Compose against the server's project and .env. Prints a shell-quoted command
 # line for ssh; every argument is quoted on its own.
@@ -93,7 +124,14 @@ check_server() {
 # ---------------------------------------------------------------- build
 
 build_image() {
-	local ref="$1" sha tag ctx
+	local ref="$1" sha tag ctx upstream
+	# Refuse to build a local branch that differs from GitHub, so a stale branch
+	# is never deployed by accident.
+	git -C "$REPO_DIR" fetch -q origin || die "could not fetch from origin"
+	if upstream="$(git -C "$REPO_DIR" rev-parse -q --verify "origin/$ref^{commit}")"; then
+		[[ "$(git -C "$REPO_DIR" rev-parse "$ref^{commit}")" == "$upstream" ]] ||
+			die "local '$ref' differs from origin/$ref. Update it first: git fetch origin && git branch -f $ref origin/$ref"
+	fi
 	sha="$(git -C "$REPO_DIR" rev-parse --short=12 "$ref^{commit}")" \
 		|| die "git ref '$ref' does not exist"
 	# The image is built from the committed ref, not the working tree. Warn when the
@@ -101,7 +139,9 @@ build_image() {
 	if [[ -n "$(git -C "$REPO_DIR" status --porcelain -- lms frontend docker 2>/dev/null)" ]]; then
 		printf 'warning: uncommitted changes under lms/, frontend/ or docker/ are NOT in the image; only %s is built\n' "$ref" >&2
 	fi
-	tag="$IMAGE_REPO:$sha"
+	# The Containerfile comes from the working tree, not from the ref, so its hash is
+	# part of the tag: a changed Containerfile must not reuse an old image's tag.
+	tag="$IMAGE_REPO:$sha-$(sha256sum "$CONTAINERFILE" | cut -c1-8)"
 	ctx="$(mktemp -d)"
 	BUILD_CTX="$ctx"
 	mkdir -p "$ctx/lms-src"
@@ -122,8 +162,16 @@ build_image() {
 
 ship_image() {
 	local tag="$1"
-	run "Copy $tag to $DEPLOY_HOST over SSH (no registry)" \
-		bash -c "docker save '$tag' | gzip | ssh -o BatchMode=yes '$DEPLOY_HOST' 'gunzip | docker load'"
+	if [[ $DRY_RUN -eq 0 ]] && remote "docker image inspect $(printf '%q' "$tag") >/dev/null 2>&1"; then
+		info "$DEPLOY_HOST already has $tag; not copying it again"
+		return 0
+	fi
+	if [[ $DRY_RUN -eq 1 ]]; then
+		printf '    [dry-run] copy %s to %s over SSH (docker save | gzip | ssh docker load)\n' "$tag" "$DEPLOY_HOST"
+		return 0
+	fi
+	info "Copy $tag to $DEPLOY_HOST over SSH (no registry)"
+	docker save "$tag" | gzip | ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" 'gunzip | docker load'
 }
 
 # ---------------------------------------------------------------- server state
@@ -147,12 +195,12 @@ record_state() {
 wait_healthy() {
 	local tries=30
 	if [[ $DRY_RUN -eq 1 ]]; then
-		printf '    [dry-run] wait for http://127.0.0.1:8000/api/method/ping on the server\n'
+		printf '    [dry-run] wait for http://127.0.0.1:8000/api/method/ping (Host: %s) on the server\n' "$SITE_NAME"
 		return 0
 	fi
 	info "Waiting for the site to answer"
 	for _ in $(seq "$tries"); do
-		if remote "curl -fsS -o /dev/null http://127.0.0.1:8000/api/method/ping"; then
+		if remote "curl -fsS -o /dev/null -H $(printf '%q' "Host: $SITE_NAME") http://127.0.0.1:8000/api/method/ping"; then
 			info "The site answers"
 			return 0
 		fi
@@ -182,7 +230,7 @@ cmd_deploy() {
 	if [[ $DRY_RUN -eq 1 ]]; then
 		local sha
 		sha="$(git -C "$REPO_DIR" rev-parse --short=12 "$ref^{commit}" 2>/dev/null || echo "<sha of $ref>")"
-		BUILT_TAG="$IMAGE_REPO:$sha"
+		BUILT_TAG="$IMAGE_REPO:$sha-$(sha256sum "$CONTAINERFILE" | cut -c1-8)"
 		printf '    [dry-run] docker build of %s from %s\n' "$BUILT_TAG" "$ref"
 	else
 		build_image "$ref"
@@ -300,7 +348,7 @@ cmd_setup() {
 		info "Found an existing .env on the server; keeping its secrets"
 	fi
 	run "Copy the production compose file to the server" \
-		bash -c "scp -q -o BatchMode=yes '$COMPOSE_FILE' '$DEPLOY_HOST:$DEPLOY_DIR/compose.yml'"
+		scp -q "${SSH_OPTS[@]}" "$COMPOSE_FILE" "$DEPLOY_HOST:$DEPLOY_DIR/compose.yml"
 
 	build_image "$REF"
 	ship_image "$BUILT_TAG"
@@ -323,7 +371,15 @@ cmd_setup() {
 		if remote "$(rcompose exec -T app test -d "sites/$SITE_NAME")" >/dev/null 2>&1; then
 			die "site $SITE_NAME already exists on the server; setup will not recreate it"
 		fi
-		printf '%s\n' "${ADMIN_PW:?}" | remote "read -r ADMIN_PASSWORD && export ADMIN_PASSWORD && $(rcompose run --rm --no-deps -T -e ADMIN_PASSWORD app sh -c "bench new-site $SITE_NAME --mariadb-root-password \"\$DB_ROOT_PASSWORD\" --admin-password \"\$ADMIN_PASSWORD\" --no-mariadb-socket && bench --site $SITE_NAME install-app payments && bench --site $SITE_NAME install-app lms && bench use $SITE_NAME")"
+		# Asked here, not only when .env is first written: a run that stopped after
+		# writing .env must still be able to create the site on a later run.
+		if [[ -z "${ADMIN_PW:-}" ]]; then
+			printf 'Admin password for the new site (not stored anywhere in the repo): '
+			read -r -s ADMIN_PW
+			echo
+			[[ ${#ADMIN_PW} -ge 8 ]] || die "admin password must be at least 8 characters"
+		fi
+		printf '%s\n' "$ADMIN_PW" | remote_stdin "read -r ADMIN_PASSWORD && export ADMIN_PASSWORD && $(rcompose run --rm --no-deps -T -e ADMIN_PASSWORD app sh -c "bench new-site $SITE_NAME --mariadb-root-password \"\$DB_ROOT_PASSWORD\" --admin-password \"\$ADMIN_PASSWORD\" --no-mariadb-socket && bench --site $SITE_NAME install-app payments && bench --site $SITE_NAME install-app lms && bench use $SITE_NAME")"
 	fi
 
 	log "Starting the application"
@@ -331,6 +387,21 @@ cmd_setup() {
 	wait_healthy || die "the site did not answer; check: scripts/deploy/deploy.sh status"
 	[[ $DRY_RUN -eq 1 ]] || record_state "$BUILT_TAG"
 	log "Setup finished. Put a reverse proxy in front of 127.0.0.1:8000 for https://$SITE_NAME"
+}
+
+# ---------------------------------------------------------------- install
+
+# Runs scripts/deploy/install-server.sh on the server. A dry run still connects,
+# because the installer's checks read the server, but it changes nothing.
+cmd_install() {
+	load_config
+	check_local_tools
+	log "Preparing $DEPLOY_HOST for $SITE_NAME"
+	local dry=0
+	[[ $DRY_RUN -eq 1 ]] && dry=1
+	ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" \
+		"DRY_RUN=$dry bash -s -- $(printf '%q' "$SITE_NAME") $(printf '%q' "$DEPLOY_DIR")" \
+		< "$SCRIPT_DIR/install-server.sh"
 }
 
 # ---------------------------------------------------------------- mcp
@@ -400,7 +471,7 @@ cmd_mcp() {
 		printf '    [dry-run] on %s: enable MCP, create or update both agents, restrict them to the Docker gateway IP,\n' "$DEPLOY_HOST"
 		printf '              write new tokens to %s/mcp/<agent>.token (mode 600)\n' "$DEPLOY_DIR"
 	else
-		mcp_remote_script | remote "bash -s"
+		mcp_remote_script | remote_stdin "bash -s"
 	fi
 
 	log "On the server, register the agents with Claude Code"
@@ -423,18 +494,19 @@ while [[ $# -gt 0 ]]; do
 		--ref) REF_OVERRIDE="${2:?--ref needs a value}"; shift ;;
 		--migrate) MIGRATE=1 ;;
 		--dry-run) DRY_RUN=1 ;;
-		-h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+		-h|--help) sed -n '2,18p' "$0"; exit 0 ;;
 		*) die "unknown option: $1" ;;
 	esac
 	shift
 done
 
 case "$COMMAND" in
+	install) cmd_install ;;
 	setup) cmd_setup ;;
 	deploy) cmd_deploy ;;
 	rollback) cmd_rollback ;;
 	backup) cmd_backup ;;
 	status) cmd_status ;;
 	mcp) cmd_mcp ;;
-	*) sed -n '2,17p' "$0"; exit 2 ;;
+	*) sed -n '2,18p' "$0"; exit 2 ;;
 esac
