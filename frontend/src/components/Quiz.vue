@@ -418,10 +418,9 @@
 										<div
 											v-if="questionDetails.data[`explanation_${index}`]"
 											v-show="showAnswers.length"
+											v-math-text="questionDetails.data[`explanation_${index}`]"
 											class="break-words px-3 text-p-base text-ink-gray-7"
-										>
-											{{ questionDetails.data[`explanation_${index}`] }}
-										</div>
+										></div>
 									</template>
 								</template>
 								<div role="status" class="empty:absolute">

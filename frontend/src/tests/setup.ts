@@ -81,7 +81,7 @@ afterEach(() => {
 
 if (typeof window !== 'undefined') {
 	const { config } = await import('@vue/test-utils')
-	const { safeHtml, vExternal } = await import('../directives')
+	const { safeHtml, mathText, vExternal } = await import('../directives')
 
 	// main.js registers these on the app, so a component that uses one renders
 	// wrong under a bare mount() and the failure looks like missing data rather
@@ -91,6 +91,7 @@ if (typeof window !== 'undefined') {
 	config.global.directives = {
 		...config.global.directives,
 		'safe-html': safeHtml,
+		'math-text': mathText,
 		external: vExternal,
 	}
 

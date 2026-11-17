@@ -89,3 +89,44 @@ describe('v-safe-html and formulas', () => {
 		wrapper.unmount()
 	})
 })
+
+describe('v-math-text', () => {
+	const Explain = defineComponent({
+		props: { text: { type: String, default: '' } },
+		template: '<div class="target" v-math-text="text"></div>',
+	})
+
+	it('renders formulas in plain-text explanations', async () => {
+		const wrapper = mount(Explain, {
+			props: {
+				text: '\\(\\alpha + \\beta = -\\frac{b}{a} = -\\frac{-5}{1} = 5\\).',
+			},
+		})
+		await vi.waitFor(() =>
+			expect(wrapper.find('.target .katex').exists()).toBe(true),
+		)
+		expect(wrapper.find('.target').text()).not.toContain('\\(')
+		wrapper.unmount()
+	})
+
+	it('keeps HTML-like text as text', async () => {
+		const wrapper = mount(Explain, {
+			props: { text: 'Values with x < 3 and <b>bold</b>' },
+		})
+		await new Promise((r) => setTimeout(r, 50))
+		expect(wrapper.find('.target b').exists()).toBe(false)
+		expect(wrapper.find('.target').text()).toBe(
+			'Values with x < 3 and <b>bold</b>',
+		)
+		wrapper.unmount()
+	})
+
+	it('renders the new value when it changes', async () => {
+		const wrapper = mount(Explain, { props: { text: 'No formula yet' } })
+		await wrapper.setProps({ text: '\\(x^2\\)' })
+		await vi.waitFor(() =>
+			expect(wrapper.find('.target .katex').exists()).toBe(true),
+		)
+		wrapper.unmount()
+	})
+})
