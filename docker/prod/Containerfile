@@ -70,13 +70,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # wkhtmltopdf is not packaged for Debian trixie; PDF generation needs it installed separately. Build packages are not installed here.
 RUN apt-get -o Acquire::Retries=5 update \
  && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-      ca-certificates curl git tini mariadb-client \
+      ca-certificates curl git tini mariadb-client nginx \
       libmariadb3 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
       libjpeg62-turbo libxrender1 libxext6 fontconfig fonts-dejavu-core \
       libffi8 libssl3t64 libsqlite3-0 libbz2-1.0 liblzma5 libreadline8t64 zlib1g libncursesw6 \
  && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 --shell /bin/bash frappe
+
+# nginx for the "frontend" container, which serves /assets and /files (see nginx.conf).
+COPY --chmod=644 nginx.conf /home/frappe/nginx.conf
+COPY --chmod=755 entrypoint.sh /usr/local/bin/lms-entrypoint
 
 # Same paths as the builder, so the virtualenv's links to Python still resolve.
 COPY --from=builder --chown=frappe:frappe /home/frappe/.pyenv /home/frappe/.pyenv
@@ -98,8 +102,15 @@ RUN node --version \
  && mariadb --version \
  && node -e "require('/home/frappe/frappe-bench/apps/frappe/node_modules/socket.io')" \
  && python -c "import frappe, MySQLdb; print('frappe', frappe.__version__)" \
- && bench --version
+ && bench --version \
+ && nginx -v \
+ && test -f sites/assets/assets.json \
+ && test -n "$(ls sites/assets/lms/frontend/assets/*.css)"
 
-EXPOSE 8000 9000
-ENTRYPOINT ["tini", "--"]
+# Keep the built assets outside sites/ (a volume); lms-entrypoint links
+# sites/assets to them on every start, so a deploy never serves stale CSS or JS.
+RUN mv sites/assets built-assets && ln -s ../built-assets sites/assets
+
+EXPOSE 8000 8080 9000
+ENTRYPOINT ["tini", "--", "lms-entrypoint"]
 CMD ["bench", "--version"]
