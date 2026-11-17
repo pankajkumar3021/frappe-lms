@@ -43,7 +43,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/method/ping"]
+      # Frappe picks the site by host name, so the check must name the site.
+      test: ["CMD", "curl", "-fsS", "-H", "Host: ${SITE_NAME:?set SITE_NAME in .env}", "http://127.0.0.1:8000/api/method/ping"]
       interval: 20s
       timeout: 5s
       retries: 6
