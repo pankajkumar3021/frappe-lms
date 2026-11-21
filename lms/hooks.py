@@ -87,6 +87,8 @@ user_invitation = {
 }
 after_migrate = [
 	"lms.lms.doctype.lms_payment.lms_payment.add_unique_payment_id_constraint",
+	# Raven chat: students keep chat without desk access (see lms.lms.raven_chat).
+	"lms.lms.raven_chat.keep_raven_user_role_off_desk",
 	# Also on migrate, not only after_sync. Both seeders are create-if-absent, and
 	# running the sidebar one on fresh installs alone means a fourteenth built-in
 	# added to `standard_sidebar_items` later never reaches a site that has
@@ -223,6 +225,13 @@ doc_events = {
 	"LMS Batch Enrollment": {"after_insert": "lms.lms.telemetry.enrolled_in_batch"},
 	"LMS Certificate": {"after_insert": "lms.lms.telemetry.certificate_issued"},
 	"LMS Settings": {"on_update": "lms.lms.telemetry.payment_gateway_saved"},
+	# Students in Raven chat see only channels they are members of and share no media
+	# (lms.lms.raven_chat). These doctypes exist only where Raven is installed.
+	"Raven Workspace Member": {"validate": "lms.lms.raven_chat.validate_workspace_member"},
+	"Raven Workspace": {"validate": "lms.lms.raven_chat.validate_workspace"},
+	"Raven Channel": {"validate": "lms.lms.raven_chat.validate_channel"},
+	"Raven Message": {"validate": "lms.lms.raven_chat.validate_message"},
+	"File": {"before_insert": "lms.lms.raven_chat.validate_file"},
 }
 
 # Scheduled Tasks
