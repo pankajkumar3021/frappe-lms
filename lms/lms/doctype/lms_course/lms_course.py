@@ -40,6 +40,7 @@ COURSE_OWNED_DOCTYPES = (
 
 class LMSCourse(Document):
 	def validate(self):
+		self.validate_publisher()
 		self.validate_published()
 		self.warn_quizzes_without_questions()
 		self.validate_instructors()
@@ -52,6 +53,23 @@ class LMSCourse(Document):
 		validate_attachable_file(self, "image")
 		self.image = validate_image(self.image)
 		self.validate_card_gradient()
+
+	def validate_publisher(self):
+		"""Only a Moderator (or a site administrator) takes a course live or down.
+
+		Instructors may edit the course in every other way. Installs, patches and
+		migrations run as the system and are left alone.
+		"""
+		changed = bool(self.published) if self.is_new() else self.has_value_changed("published")
+		if not changed or frappe.flags.in_install or frappe.flags.in_patch or frappe.flags.in_migrate:
+			return
+
+		# Imported here: lms.lms.permissions imports lms.lms.utils, which this module
+		# also imports, and the controller must not pull permissions in at load time.
+		from lms.lms.permissions import can_publish_course
+
+		if not can_publish_course():
+			frappe.throw(_("Only a Moderator can publish or unpublish a course."), frappe.PermissionError)
 
 	def validate_published(self):
 		if not self.published:

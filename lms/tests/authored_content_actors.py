@@ -231,7 +231,8 @@ class AuthoredContentChildRowActors(BaseTestUtils):
 
 	def _course_for_a_program(self):
 		"""A course for a program row to point at, made by the author through the
-		ordinary permission path -- a Course Creator holds create on LMS Course."""
+		ordinary permission path -- a Course Creator holds create on LMS Course. It is a
+		draft: only a Moderator publishes a course."""
 		with self._acting_as(self.author.name):
 			course = frappe.get_doc(
 				{
@@ -239,7 +240,7 @@ class AuthoredContentChildRowActors(BaseTestUtils):
 					"title": self._title("Program Course"),
 					"short_introduction": "Short",
 					"description": "Description",
-					"published": 1,
+					"published": 0,
 					"instructors": [{"instructor": self.author.name}],
 				}
 			).insert()

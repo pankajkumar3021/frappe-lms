@@ -198,3 +198,118 @@ class TestCourseLaunchEmail(BaseTestUtils):
 			call.kwargs["recipients"]: call.kwargs["args"]["first_name"] for call in sendmail.call_args_list
 		}
 		self.assertEqual(greetings, {self.waiting.name: "Wes", second.name: "Sam"})
+
+
+class TestCoursePublishIsModeratorOnly(BaseTestUtils):
+	"""Only a Moderator (or a site administrator) takes a course live or down. A Course
+	Instructor edits everything else, and an instructor's import lands as a draft."""
+
+	def setUp(self):
+		super().setUp()
+		suffix = frappe.generate_hash(length=6)
+		self.instructor = self._create_user(
+			f"publish-instructor-{suffix}@example.com", "Ina", "Instructor", ["Course Creator"]
+		).name
+		self.moderator = self._create_user(
+			f"publish-moderator-{suffix}@example.com", "Mo", "Moderator", ["Moderator"]
+		).name
+		self._require_no_moderators(self.instructor)
+		self.course = frappe.get_doc(
+			{
+				"doctype": "LMS Course",
+				"title": f"Publish Rule {suffix}",
+				"short_introduction": "Draft course",
+				"description": "Draft course",
+				"published": 0,
+				"instructors": [{"instructor": self.instructor}],
+			}
+		).insert()
+
+	def _as(self, user):
+		frappe.set_user(user)
+		return frappe.get_doc("LMS Course", self.course.name)
+
+	def test_instructor_cannot_publish(self):
+		course = self._as(self.instructor)
+		course.published = 1
+		with self.assertRaises(frappe.PermissionError):
+			course.save()
+
+	def test_instructor_cannot_unpublish(self):
+		self.course.published = 1
+		self.course.save()
+
+		course = self._as(self.instructor)
+		course.published = 0
+		with self.assertRaises(frappe.PermissionError):
+			course.save()
+
+	def test_instructor_can_edit_other_fields(self):
+		course = self._as(self.instructor)
+		course.short_introduction = "Edited by the instructor"
+		course.save()
+
+		frappe.set_user("Administrator")
+		saved = frappe.db.get_value(
+			"LMS Course", self.course.name, ["short_introduction", "published"], as_dict=True
+		)
+		self.assertEqual(saved.short_introduction, "Edited by the instructor")
+		self.assertEqual(saved.published, 0)
+
+	def test_instructor_cannot_create_a_published_course(self):
+		frappe.set_user(self.instructor)
+		course = frappe.get_doc(
+			{
+				"doctype": "LMS Course",
+				"title": f"Born Published {frappe.generate_hash(length=6)}",
+				"short_introduction": "x",
+				"description": "x",
+				"published": 1,
+				"instructors": [{"instructor": self.instructor}],
+			}
+		)
+		with self.assertRaises(frappe.PermissionError):
+			course.insert()
+
+	def test_moderator_can_publish_and_unpublish(self):
+		course = self._as(self.moderator)
+		course.published = 1
+		course.save()
+		self.assertEqual(frappe.db.get_value("LMS Course", self.course.name, "published"), 1)
+
+		course = self._as(self.moderator)
+		course.published = 0
+		course.save()
+		self.assertEqual(frappe.db.get_value("LMS Course", self.course.name, "published"), 0)
+
+	def test_instructor_import_lands_as_draft(self):
+		from lms.lms.course_import_export import create_course_doc
+
+		frappe.set_user(self.instructor)
+		imported = create_course_doc(
+			{
+				"title": f"Imported {frappe.generate_hash(length=6)}",
+				"short_introduction": "x",
+				"description": "x",
+				"published": 1,
+				"published_on": "2026-01-01",
+				"instructors": [{"instructor": self.instructor}],
+			}
+		)
+		self.assertEqual(imported.published, 0)
+		self.assertFalse(imported.published_on)
+
+	def test_moderator_import_keeps_published(self):
+		from lms.lms.course_import_export import create_course_doc
+
+		frappe.set_user(self.moderator)
+		imported = create_course_doc(
+			{
+				"title": f"Imported Live {frappe.generate_hash(length=6)}",
+				"short_introduction": "x",
+				"description": "x",
+				"published": 1,
+				"instructors": [{"instructor": self.instructor}],
+			}
+		)
+		self.assertEqual(imported.published, 1)

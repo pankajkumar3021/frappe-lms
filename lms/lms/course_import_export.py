@@ -732,6 +732,14 @@ def create_course_doc(course_data):
 	if not record_exists("Course Evaluator", course_data.get("evaluator")):
 		course_data.pop("evaluator", None)
 	add_data_to_course(course_doc, course_data)
+
+	from lms.lms.permissions import can_publish_course
+
+	if course_doc.published and not can_publish_course():
+		# Only a Moderator takes a course live, so anyone else's import lands as a
+		# draft rather than failing the whole import.
+		course_doc.published = 0
+		course_doc.published_on = None
 	course_doc.insert(ignore_permissions=True)
 	return course_doc
 
