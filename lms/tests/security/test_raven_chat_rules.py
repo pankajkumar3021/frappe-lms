@@ -245,3 +245,57 @@ class TestRavenChatStudentRules(BaseTestUtils):
 		raven_chat.keep_raven_user_role_off_desk()
 		self.assertEqual(frappe.db.get_value("Role", "Raven User", "desk_access"), 0)
 		self.assertIn("lms.lms.raven_chat.keep_raven_user_role_off_desk", frappe.get_hooks("after_migrate"))
+
+	def test_staff_who_are_website_users_are_not_students(self):
+		"""LMS staff roles carry no desk access, so a Moderator or instructor can be a
+		Website User; the role, not the user type, makes them staff."""
+		website_staff = self._create_user(
+			f"rc-webstaff-{self.hash}@example.com", "Web", "Staff", ["Moderator"]
+		).name
+		self.assertEqual(frappe.db.get_value("User", website_staff, "user_type"), "Website User")
+		if not frappe.db.exists("Raven User", {"user": website_staff}):
+			frappe.get_doc({"doctype": "Raven User", "user": website_staff, "type": "User"}).insert(
+				ignore_permissions=True
+			)
+		from lms.lms.permissions import is_chat_student
+
+		self.assertFalse(is_chat_student(website_staff))
+		self.assertTrue(is_chat_student(self.student))
+
+		ws = self._workspace()
+		self._member(ws.name, website_staff, is_admin=1)
+		self.assertFalse(raven_chat.workspace_has_students(ws.name))
+		self._channel(ws.name, "Open")  # no students in it yet
+
+		frappe.set_user(website_staff)
+		raven_chat.validate_message(
+			self._message("any-channel", message_type="Image", file="/private/files/a.png")
+		)
+
+	def test_a_private_workspace_is_made_student_ready_when_a_student_joins(self):
+		"""raven_integration creates a Private workspace without the other two settings."""
+		ws = frappe.get_doc(
+			{
+				"doctype": "Raven Workspace",
+				"workspace_name": f"rc-ws-{self.hash}-plain",
+				"type": "Private",
+				"can_only_join_via_invite": 0,
+				"only_admins_can_create_channels": 0,
+			}
+		).insert(ignore_permissions=True)
+		self.addCleanup(self._delete, "Raven Workspace", ws.name)
+		self._member(ws.name, self.student)
+		ws.reload()
+		self.assertTrue(raven_chat.is_student_ready(ws))
+
+	def test_a_raven_profile_comes_with_the_raven_user_role(self):
+		"""Raven's app checks the role; raven_integration creates only the profile."""
+		raven_chat.keep_raven_user_role_off_desk()
+		learner = self._create_user(
+			f"rc-learner-{self.hash}@example.com", "New", "Learner", ["LMS Student"]
+		).name
+		frappe.get_doc({"doctype": "Raven User", "user": learner, "type": "User"}).insert(
+			ignore_permissions=True
+		)
+		self.assertIn("Raven User", frappe.get_roles(learner))
+		self.assertEqual(frappe.db.get_value("User", learner, "user_type"), "Website User")

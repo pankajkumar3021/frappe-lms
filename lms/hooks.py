@@ -231,6 +231,7 @@ doc_events = {
 	"Raven Workspace": {"validate": "lms.lms.raven_chat.validate_workspace"},
 	"Raven Channel": {"validate": "lms.lms.raven_chat.validate_channel"},
 	"Raven Message": {"validate": "lms.lms.raven_chat.validate_message"},
+	"Raven User": {"after_insert": "lms.lms.raven_chat.give_chat_role"},
 	"File": {"before_insert": "lms.lms.raven_chat.validate_file"},
 }
 
