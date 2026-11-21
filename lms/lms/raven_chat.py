@@ -8,12 +8,17 @@ any member share files and images. For students (Website Users, see
    channel to its members alone, so a student may only belong to a workspace whose
    channels are all Private, that people join by invitation, and where only admins
    create channels:
-   - a student joins only such a workspace, and never as its admin;
+   - a student joins only a Private workspace, never as its admin; the other two
+     settings are switched on when the first student joins;
    - a workspace with students keeps those settings;
    - a channel in a workspace with students is Private.
    Direct messages and threads are left to Raven: a thread follows its channel.
 2. A student shares no media: no file or image upload, no image, file or embedded
    media in a message. Custom emoji (inline images Raven marks as such) stay allowed.
+
+3. A person given a Raven profile also gets the Raven User role, which Raven's app
+   checks. raven_integration creates the profile alone; without the role a student
+   would be shown "You cannot access Raven".
 
 The hooks are registered in `lms/hooks.py` under doc_events; they never fire on a site
 without Raven, because its doctypes do not exist there.
@@ -22,8 +27,9 @@ without Raven, because its doctypes do not exist there.
 import frappe
 from bs4 import BeautifulSoup
 from frappe import _
+from pypika.terms import ExistsCriterion
 
-from lms.lms.permissions import is_chat_student
+from lms.lms.permissions import CHAT_STAFF_ROLES, is_chat_student
 
 # Tags that carry media into a message body. A custom emoji is an <img> Raven marks
 # with data-type="customEmoji"; every other <img> (a pasted image, a GIF) is media.
@@ -41,15 +47,26 @@ def is_student_ready(workspace) -> bool:
 
 
 def workspace_has_students(workspace: str, exclude_member: str | None = None) -> bool:
-	"""Whether any member of `workspace` is a student, leaving out the member row named."""
+	"""Whether any member of `workspace` is a student (is_chat_student, in one query),
+	leaving out the member row named."""
 	member = frappe.qb.DocType("Raven Workspace Member")
 	user = frappe.qb.DocType("User")
+	has_role = frappe.qb.DocType("Has Role")
+	staff = (
+		frappe.qb.from_(has_role)
+		.select(has_role.name)
+		.where((has_role.parent == member.user) & has_role.role.isin(CHAT_STAFF_ROLES))
+	)
 	query = (
 		frappe.qb.from_(member)
 		.join(user)
 		.on(user.name == member.user)
 		.select(member.name)
-		.where((member.workspace == workspace) & (user.user_type == "Website User"))
+		.where(
+			(member.workspace == workspace)
+			& (user.user_type == "Website User")
+			& ExistsCriterion(staff).negate()
+		)
 		.limit(1)
 	)
 	if exclude_member:
@@ -72,7 +89,11 @@ def _non_private_channels(workspace: str) -> list[str]:
 
 
 def validate_workspace_member(doc, method=None):
-	"""Raven Workspace Member: a student joins only a student-ready workspace, not as admin."""
+	"""Raven Workspace Member: a student joins only a Private workspace, never as its admin.
+
+	A Private workspace without the other two settings (as raven_integration creates one)
+	is made student-ready here, when its first student arrives, rather than refused: the
+	admin who chose Private meant it for them. A Public workspace is refused."""
 	if not is_chat_student(doc.user):
 		return
 
@@ -85,13 +106,13 @@ def validate_workspace_member(doc, method=None):
 		["type", "can_only_join_via_invite", "only_admins_can_create_channels"],
 		as_dict=True,
 	)
-	if not workspace or not is_student_ready(workspace):
-		frappe.throw(
-			_(
-				"Students can only be added to a private chat workspace that people join by"
-				" invitation and where only admins create channels."
-			),
-			frappe.PermissionError,
+	if not workspace or workspace.type != "Private":
+		frappe.throw(_("Students can only be added to a private chat workspace."), frappe.PermissionError)
+	if not is_student_ready(workspace):
+		frappe.db.set_value(
+			"Raven Workspace",
+			doc.workspace,
+			{"can_only_join_via_invite": 1, "only_admins_can_create_channels": 1},
 		)
 
 	open_channels = _non_private_channels(doc.workspace)
@@ -177,3 +198,17 @@ def keep_raven_user_role_off_desk():
 	Raven installed later, cannot turn it back on."""
 	if frappe.db.get_value("Role", "Raven User", "desk_access"):
 		frappe.db.set_value("Role", "Raven User", "desk_access", 0)
+
+
+def give_chat_role(doc, method=None):
+	"""Raven User after_insert: the person also gets the Raven User role, which Raven's app
+	and permissions check. raven_integration provisions the profile without it. The role
+	has no desk access here (keep_raven_user_role_off_desk), so a student stays a Website
+	User."""
+	if doc.get("type") not in (None, "", "User") or not doc.user or doc.user == "Administrator":
+		return
+	if frappe.db.exists("Has Role", {"parent": doc.user, "parenttype": "User", "role": "Raven User"}):
+		return
+	user = frappe.get_doc("User", doc.user)
+	user.flags.ignore_permissions = True
+	user.add_roles("Raven User")

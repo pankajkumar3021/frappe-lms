@@ -752,16 +752,24 @@ def can_publish(user: str | None = None) -> bool:
 	return is_site_administrator(user) or bool(has_moderator_role(user))
 
 
+# Roles that make a chat user staff rather than a student (see is_chat_student).
+CHAT_STAFF_ROLES = ("Course Creator", "Moderator", "Batch Evaluator", "Raven Admin", "System Manager")
+
+
 def is_chat_student(user: str | None = None) -> bool:
 	"""Whether `user` uses Raven chat as a student, under the rules in lms.lms.raven_chat.
 
-	A student is a Website User: the Raven User role is kept without desk access on
-	this site, so giving a student chat does not make them a System User. Staff are
-	System Users."""
+	A student is a Website User with none of the staff roles in CHAT_STAFF_ROLES. The
+	Raven User role is kept without desk access on this site, so giving a student chat
+	does not make them a System User. Staff are not always System Users: the LMS staff
+	roles carry no desk access either, so a Moderator or instructor can be a Website User
+	too, and is told apart by role."""
 	user = user or frappe.session.user
 	if user in ("Administrator", "Guest"):
 		return False
-	return frappe.db.get_value("User", user, "user_type") == "Website User"
+	if frappe.db.get_value("User", user, "user_type") != "Website User":
+		return False
+	return not frappe.db.exists("Has Role", {"parent": user, "role": ("in", CHAT_STAFF_ROLES)})
 
 
 def refuse_unpermitted_publish(doc, message: str) -> None:
