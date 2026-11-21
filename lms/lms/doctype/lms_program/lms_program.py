@@ -6,7 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 
 from lms.lms.doctype.lms_content_author.lms_content_author import AuthoredDocument
-from lms.lms.permissions import has_authored_content_permission
+from lms.lms.permissions import has_authored_content_permission, refuse_unpermitted_publish
 from lms.lms.utils import guest_access_allowed
 
 # The roles this doctype has always treated as its authoring population. The role
@@ -20,6 +20,8 @@ PROGRAM_READ_PTYPES = ("read", "select", "print")
 
 class LMSProgram(AuthoredDocument, Document):
 	def validate(self):
+		# Only a Moderator takes a program live or down; instructors edit the rest.
+		refuse_unpermitted_publish(self, _("Only a Moderator can publish or unpublish a program."))
 		self.validate_program_courses()
 		self.validate_program_members()
 		self.update_count()

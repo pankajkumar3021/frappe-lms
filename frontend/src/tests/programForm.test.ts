@@ -251,6 +251,53 @@ beforeEach(() => {
 })
 
 describe('ProgramForm as a route', () => {
+	// Only a Moderator publishes a program; the server refuses anyone else. An
+	// instructor manages the program but neither sees nor sends `published`, so a
+	// stale value cannot undo a Moderator's publish.
+	describe('publishing is for Moderators only', () => {
+		const instructor = {
+			name: 'teacher@example.com',
+			is_moderator: false,
+			is_instructor: true,
+		}
+
+		const labelsOf = (wrapper: any) =>
+			wrapper
+				.find('[data-testid="program-fields"]')
+				.findAll('label')
+				.map((label: any) => label.text())
+
+		it('hides Published from an instructor', async () => {
+			const { wrapper } = await deepLink('new', instructor)
+			expect(labelsOf(wrapper)).not.toContain('Published')
+			expect(labelsOf(wrapper)).toContain('Enforce Course Order')
+		})
+
+		it('does not send published when an instructor creates a program', async () => {
+			const { wrapper } = await deepLink('new', instructor)
+			await wrapper.find('[data-testid="program-save"]').trigger('click')
+			expect(insertSubmit).toHaveBeenCalledTimes(1)
+			expect(insertSubmit.mock.calls[0][0]).not.toHaveProperty('published')
+		})
+
+		it("leaves published alone when an instructor saves an edit", async () => {
+			const { wrapper } = await deepLink('data-science', instructor)
+			listFor('LMS Program Course').answer(COURSE_ROWS)
+			listFor('LMS Program Member').answer(MEMBER_ROWS)
+			resources.docs[0].answer({
+				name: 'data-science',
+				title: 'data-science',
+				published: 1,
+				enforce_course_order: 0,
+			})
+			await flushPromises()
+
+			await wrapper.find('[data-testid="program-save"]').trigger('click')
+			expect(setValueSubmit).toHaveBeenCalledTimes(1)
+			expect(setValueSubmit.mock.calls[0][0]).not.toHaveProperty('published')
+		})
+	})
+
 	it('refuses to render the form for a user who cannot manage programs', async () => {
 		const { wrapper } = await deepLink('new', student)
 		expect(wrapper.find('[data-testid="program-fields"]').exists()).toBe(false)

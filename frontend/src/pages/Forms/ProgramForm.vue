@@ -24,6 +24,7 @@
 					/>
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-5">
 						<FormControl
+							v-if="canPublish"
 							v-model="program.published"
 							:label="__('Published')"
 							type="checkbox"
@@ -322,6 +323,16 @@ const canManageProgram = computed(() => {
 	return Boolean(user.data?.is_moderator || user.data?.is_instructor)
 })
 
+// Only a Moderator takes a program live or down (the server refuses anyone else).
+// For everyone else the form neither shows nor sends `published`, so a stale value
+// cannot undo a Moderator's publish.
+const canPublish = computed(() => Boolean(user.data?.is_moderator))
+
+const programFields = (): Record<string, unknown> => {
+	const { published, ...rest } = program.value
+	return canPublish.value ? { ...rest, published } : rest
+}
+
 const program = ref<Program>({
 	name: '',
 	title: '',
@@ -457,7 +468,7 @@ const createNewProgram = () => {
 	submitResource(
 		programs.insert,
 		{
-			...program.value,
+			...programFields(),
 			title: program.value.name,
 		},
 		{
@@ -482,7 +493,7 @@ const updateProgram = () => {
 			// Spreading it last overwrote the row being addressed with the new
 			// title, so set_value targeted a docname that does not exist yet and
 			// no program could ever be renamed.
-			...program.value,
+			...programFields(),
 			name: programId.value,
 		},
 		{

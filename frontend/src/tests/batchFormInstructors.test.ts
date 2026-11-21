@@ -6,14 +6,15 @@ import { defineComponent, h } from 'vue'
 vi.stubGlobal('__', (text: string) => text)
 enableAutoUnmount(afterEach)
 
-const { stub } = vi.hoisted(() => ({
+const { stub, setValueSubmit } = vi.hoisted(() => ({
 	stub: { inheritAttrs: false, render: () => null },
+	setValueSubmit: vi.fn(),
 }))
 
 vi.mock('frappe-ui', () => ({
 	createDocumentResource: () => ({
-		doc: { name: 'B1', title: 'Batch', instructors: [] },
-		setValue: { submit: vi.fn() },
+		doc: { name: 'B1', title: 'Batch', instructors: [], published: 1 },
+		setValue: { submit: setValueSubmit },
 		reload: vi.fn(),
 	}),
 	createResource: () => ({ data: null, reload: vi.fn(), submit: vi.fn() }),
@@ -82,20 +83,38 @@ const mountForm = async (batchData: Record<string, unknown>) => {
 		},
 	})
 	await flushPromises()
-	return wrapper.find('[data-testid="multilink-Instructors"]')
+	return wrapper
 }
+
+const pickerOf = async (batchData: Record<string, unknown>) =>
+	(await mountForm(batchData)).find('[data-testid="multilink-Instructors"]')
 
 describe('the batch form instructors picker', () => {
 	it('is read-only for an evaluator who is not an instructor', async () => {
-		const picker = await mountForm({ can_manage: true })
+		const picker = await pickerOf({ can_manage: true })
 		expect(picker.attributes('data-disabled')).toBe('true')
 	})
 
 	it('is editable for an instructor or Moderator', async () => {
-		const picker = await mountForm({
+		const picker = await pickerOf({
 			can_manage: true,
 			can_change_instructors: true,
 		})
 		expect(picker.attributes('data-disabled')).toBe('false')
+	})
+})
+
+// Publishing belongs to the header's Publish toggle (Moderators only); the server
+// refuses the change from anyone else. The form has no publish field, so a save
+// must not send the `published` value it loaded.
+describe('the batch form save', () => {
+	it('does not send published', async () => {
+		setValueSubmit.mockReset()
+		const wrapper = await mountForm({ can_manage: true })
+		;(wrapper.vm as unknown as { submitBatch: () => void }).submitBatch()
+		expect(setValueSubmit).toHaveBeenCalledTimes(1)
+		const payload = setValueSubmit.mock.calls[0][0]
+		expect(payload).not.toHaveProperty('published')
+		expect(payload.title).toBe('Batch')
 	})
 })
