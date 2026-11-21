@@ -744,6 +744,14 @@ def is_site_administrator(user: str | None = None) -> bool:
 	return user == "Administrator" or SITE_ADMIN_ROLE in frappe.get_roles(user)
 
 
+def can_publish_course(user: str | None = None) -> bool:
+	"""Whether `user` may publish or unpublish a course: a Moderator or a site
+	administrator. A Course Instructor authors a course but does not decide when it
+	goes live."""
+	user = user or frappe.session.user
+	return is_site_administrator(user) or bool(has_moderator_role(user))
+
+
 def stored_authors(doctype: str, name: str) -> list[str]:
 	"""The `authors` rows as the database holds them, not as a save proposes them.
 

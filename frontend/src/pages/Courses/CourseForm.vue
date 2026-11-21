@@ -217,6 +217,12 @@ const updateCourse = (opts: { silent?: boolean } = {}): void => {
 	// lesson-editor autosave) since the form loaded.
 	const docFields: Record<string, unknown> = { ...courseResource.doc }
 	delete docFields.modified
+	// Publishing belongs to the header's Publish toggle (Moderators only). The form
+	// has no publish field, so it must not send the value it loaded: a stale one
+	// would flip a course a Moderator just published back to draft, and the server
+	// refuses the change from an instructor outright.
+	delete docFields.published
+	delete docFields.published_on
 	courseResource.setValue.submit(
 		{
 			...docFields,

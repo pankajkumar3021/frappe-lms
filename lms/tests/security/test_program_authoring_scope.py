@@ -96,7 +96,8 @@ class ProgramAuthoringActors(BaseTestUtils):
 			).insert()
 
 	def _course(self):
-		"""A course for the program to hold, made by the author through the ordinary path."""
+		"""A course for the program to hold, made by the author through the ordinary path.
+		It is a draft: only a Moderator publishes a course."""
 		with self._acting_as(self.author.name):
 			return frappe.get_doc(
 				{
@@ -104,7 +105,7 @@ class ProgramAuthoringActors(BaseTestUtils):
 					"title": f"Program Course {self.hash} {frappe.generate_hash(length=4)}",
 					"short_introduction": "Short",
 					"description": "Description",
-					"published": 1,
+					"published": 0,
 					"instructors": [{"instructor": self.author.name}],
 				}
 			).insert()
