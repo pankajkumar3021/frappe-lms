@@ -30,4 +30,13 @@ fi
 	exit 1
 }
 
+# The same goes for sites/apps.txt: the volume keeps the list of whichever image
+# created it, so an app added to the image (bench install-app needs it listed)
+# would never appear. Copy the image's list in, atomically, when it differs.
+image_apps=/home/frappe/frappe-bench/apps.txt.image
+if ! cmp -s "$image_apps" "$sites/apps.txt"; then
+	cp "$image_apps" "$sites/.apps-txt-$$"
+	mv -f "$sites/.apps-txt-$$" "$sites/apps.txt"
+fi
+
 exec "$@"
