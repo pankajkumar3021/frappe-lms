@@ -312,6 +312,19 @@ cmd_deploy() {
 	run "Recreate app, frontend, worker, scheduler and socketio (database and Redis untouched)" \
 		remote "$(rcompose up -d --no-deps app frontend worker scheduler socketio)"
 
+	# An app added to the image (in sites/apps.txt, which the entrypoint copies from
+	# the image) is not on the site yet; migrate does not install apps, so do it here.
+	log "Installing apps the image added to $SITE_NAME"
+	run "bench install-app for each app in apps.txt not yet on the site" \
+		remote "$(rcompose exec -T -e SITE="$SITE_NAME" app sh -c 'set -e
+installed=$(bench --site "$SITE" execute frappe.get_installed_apps)
+for app in $(cat sites/apps.txt); do
+	case "$installed" in
+		*"\"$app\""*) ;;
+		*) echo "    installing $app"; bench --site "$SITE" install-app "$app" ;;
+	esac
+done')"
+
 	if [[ $MIGRATE -eq 1 ]]; then
 		log "Migrating $SITE_NAME (schema changes; backup already taken)"
 		run "bench --site $SITE_NAME migrate" \
