@@ -47,6 +47,7 @@ ZOOM_REQUEST_TIMEOUT_SECONDS = 30
 
 class LMSBatch(Document):
 	def validate(self):
+		self.validate_publisher()
 		self._validate_mandatory()
 		self.validate_added_assessments_and_courses()
 		self.validate_seats_left()
@@ -61,6 +62,15 @@ class LMSBatch(Document):
 		self.validate_timetable()
 		self.validate_evaluation_end_date()
 		self.validate_conferencing_provider()
+
+	def validate_publisher(self):
+		"""Only a Moderator (or a site administrator) takes a batch live or down.
+		Instructors and evaluators may edit the batch in every other way."""
+		# Imported here, as in the course controller: lms.lms.permissions imports
+		# lms.lms.utils, and the controller must not pull it in at load time.
+		from lms.lms.permissions import refuse_unpermitted_publish
+
+		refuse_unpermitted_publish(self, _("Only a Moderator can publish or unpublish a batch."))
 
 	def on_update(self):
 		if self.has_value_changed("published") and self.published:

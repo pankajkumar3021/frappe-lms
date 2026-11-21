@@ -540,9 +540,13 @@ const submitBatch = (): void => {
 
 const updateBatch = (opts: { silent?: boolean } = {}): void => {
 	if (!batchDetail.doc) return
+	// Publishing belongs to the header's Publish toggle (Moderators only). The form
+	// has no publish field, so it must not send the value it loaded: a stale one
+	// would undo a publish, and the server refuses the change from an instructor.
+	const { published: _published, ...docFields } = batchDetail.doc
 	batchDetail.setValue.submit(
 		{
-			...batchDetail.doc,
+			...docFields,
 			instructors: instructors.value.map((instructor) => ({
 				instructor: instructor,
 			})),

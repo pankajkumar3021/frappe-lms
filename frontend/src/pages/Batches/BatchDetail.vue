@@ -26,7 +26,7 @@
 				align="end"
 			/>
 			<Button
-				v-if="tab?.key === 'settings' && isAdmin && !isMobile"
+				v-if="tab?.key === 'settings' && canPublish && !isMobile"
 				variant="subtle"
 				:theme="batch.data?.published ? 'red' : 'gray'"
 				@click="togglePublishBatch"
@@ -175,6 +175,10 @@ const isAdmin = computed(() => {
 	)
 })
 
+// Only a Moderator takes a batch live or down (the server refuses anyone else).
+// Instructors and evaluators manage the batch but do not see the toggle.
+const canPublish = computed(() => Boolean(user.data?.is_moderator))
+
 const isStudent = computed(() => {
 	return Boolean(batch.data?.is_student)
 })
@@ -282,7 +286,7 @@ const batchMenu = (tab) => {
 		})
 	}
 	if (tab?.key !== 'settings') return options
-	if (isMobile.value) {
+	if (isMobile.value && canPublish.value) {
 		options.push({
 			label: batch.data?.published
 				? __('Unpublish batch')

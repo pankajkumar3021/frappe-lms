@@ -89,11 +89,18 @@ class ProgramAuthoringActors(BaseTestUtils):
 		Not with ignore_permissions: `create` of one's own program is unscoped by
 		design, and a create that stopped working for an authoring role is a
 		regression this suite should fail on rather than wave through.
+
+		Only a Moderator publishes, so the author creates a draft and a published
+		program is then published by the Administrator, as it would be on a site.
 		"""
 		with self._acting_as(owner):
-			return frappe.get_doc(
-				{"doctype": "LMS Program", "title": self._title(label), "published": published}
+			program = frappe.get_doc(
+				{"doctype": "LMS Program", "title": self._title(label), "published": 0}
 			).insert()
+		if published:
+			program.published = 1
+			program.save()
+		return program
 
 	def _course(self):
 		"""A course for the program to hold, made by the author through the ordinary path.

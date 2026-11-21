@@ -744,12 +744,23 @@ def is_site_administrator(user: str | None = None) -> bool:
 	return user == "Administrator" or SITE_ADMIN_ROLE in frappe.get_roles(user)
 
 
-def can_publish_course(user: str | None = None) -> bool:
-	"""Whether `user` may publish or unpublish a course: a Moderator or a site
-	administrator. A Course Instructor authors a course but does not decide when it
+def can_publish(user: str | None = None) -> bool:
+	"""Whether `user` may publish or unpublish a course, batch or program: a Moderator
+	or a site administrator. An instructor authors one but does not decide when it
 	goes live."""
 	user = user or frappe.session.user
 	return is_site_administrator(user) or bool(has_moderator_role(user))
+
+
+def refuse_unpermitted_publish(doc, message: str) -> None:
+	"""Refuse a change to `doc.published` (including creating it published) by anyone
+	who may not publish. `message` is the translated refusal. Installs, patches and
+	migrations run as the system and are left alone."""
+	changed = bool(doc.published) if doc.is_new() else doc.has_value_changed("published")
+	if not changed or frappe.flags.in_install or frappe.flags.in_patch or frappe.flags.in_migrate:
+		return
+	if not can_publish():
+		frappe.throw(message, frappe.PermissionError)
 
 
 def stored_authors(doctype: str, name: str) -> list[str]:

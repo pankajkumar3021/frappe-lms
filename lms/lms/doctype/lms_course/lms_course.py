@@ -56,20 +56,12 @@ class LMSCourse(Document):
 
 	def validate_publisher(self):
 		"""Only a Moderator (or a site administrator) takes a course live or down.
-
-		Instructors may edit the course in every other way. Installs, patches and
-		migrations run as the system and are left alone.
-		"""
-		changed = bool(self.published) if self.is_new() else self.has_value_changed("published")
-		if not changed or frappe.flags.in_install or frappe.flags.in_patch or frappe.flags.in_migrate:
-			return
-
+		Instructors may edit the course in every other way."""
 		# Imported here: lms.lms.permissions imports lms.lms.utils, which this module
 		# also imports, and the controller must not pull permissions in at load time.
-		from lms.lms.permissions import can_publish_course
+		from lms.lms.permissions import refuse_unpermitted_publish
 
-		if not can_publish_course():
-			frappe.throw(_("Only a Moderator can publish or unpublish a course."), frappe.PermissionError)
+		refuse_unpermitted_publish(self, _("Only a Moderator can publish or unpublish a course."))
 
 	def validate_published(self):
 		if not self.published:
