@@ -167,6 +167,7 @@ import CourseInstructors from '@/components/CourseInstructors.vue'
 import CourseCreatorCard from '@/components/CourseCreatorCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import RelatedCourses from '@/components/RelatedCourses.vue'
+import { isInstructorOf } from '@/utils/instructors'
 import {
 	ENROLL_AFTER_LOGIN,
 	canSelfEnroll,
@@ -197,10 +198,11 @@ watch(
 	{ immediate: true }
 )
 
+// Match on username, as everywhere else: instructors' `name` (a login email) is
+// not sent to other viewers, so comparing it made a guest (no name either) match
+// every instructor and get editor links in the outline.
 const isCourseInstructor = computed<boolean>(() =>
-	(props.course.data?.instructors || []).some(
-		(i) => i.name === user?.data?.name
-	)
+	isInstructorOf(props.course.data?.instructors, user?.data?.username)
 )
 
 const isCourseAdmin = computed<boolean>(
