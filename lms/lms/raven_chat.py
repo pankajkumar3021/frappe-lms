@@ -19,6 +19,9 @@ any member share files and images. For students (Website Users, see
 3. A person given a Raven profile also gets the Raven User role, which Raven's app
    checks. raven_integration creates the profile alone; without the role a student
    would be shown "You cannot access Raven".
+4. A person given the site's Admin role (created on migrate, no desk access) is chat
+   staff: they get a Raven profile and join every workspace, so they can be picked for
+   any channel, including the class channels.
 
 The hooks are registered in `lms/hooks.py` under doc_events; they never fire on a site
 without Raven, because its doctypes do not exist there.
@@ -29,7 +32,7 @@ from bs4 import BeautifulSoup
 from frappe import _
 from pypika.terms import ExistsCriterion
 
-from lms.lms.permissions import CHAT_STAFF_ROLES, is_chat_student
+from lms.lms.permissions import CHAT_ADMIN_ROLE, CHAT_STAFF_ROLES, is_chat_student
 
 # Tags that carry media into a message body. A custom emoji is an <img> Raven marks
 # with data-type="customEmoji"; every other <img> (a pasted image, a GIF) is media.
@@ -212,3 +215,42 @@ def give_chat_role(doc, method=None):
 	user = frappe.get_doc("User", doc.user)
 	user.flags.ignore_permissions = True
 	user.add_roles("Raven User")
+
+
+def ensure_chat_admin_role():
+	"""after_migrate: the Admin role exists, without desk access, so its holders stay
+	Website Users and use the LMS and chat rather than the desk."""
+	if not frappe.db.exists("Role", CHAT_ADMIN_ROLE):
+		frappe.get_doc(
+			{"doctype": "Role", "role_name": CHAT_ADMIN_ROLE, "desk_access": 0, "is_custom": 1}
+		).insert(ignore_permissions=True)
+
+
+def give_chat_admin_the_raven_role(doc, method=None):
+	"""User validate: the Admin role brings the Raven User role in the same save, so the
+	profile made in provision_chat_admin does not save this user again (give_chat_role)."""
+	if "raven" not in frappe.get_installed_apps() or doc.name in ("Administrator", "Guest"):
+		return
+	roles = {row.role for row in doc.get("roles", [])}
+	if CHAT_ADMIN_ROLE in roles and "Raven User" not in roles:
+		doc.append("roles", {"role": "Raven User"})
+
+
+def provision_chat_admin(doc, method=None):
+	"""User on_update: someone holding the Admin role gets a Raven profile (and with it
+	the Raven User role, see give_chat_role) and joins every Raven workspace. Raven offers
+	only profiles in its pickers, and a channel's picker only the workspace's members.
+	Taking the role away later leaves chat as it is."""
+	if "raven" not in frappe.get_installed_apps() or doc.name in ("Administrator", "Guest"):
+		return
+	if CHAT_ADMIN_ROLE not in {row.role for row in doc.get("roles", [])}:
+		return
+	if not frappe.db.exists("Raven User", {"user": doc.name}):
+		frappe.get_doc({"doctype": "Raven User", "user": doc.name, "type": "User"}).insert(
+			ignore_permissions=True
+		)
+	for workspace in frappe.get_all("Raven Workspace", pluck="name"):
+		if not frappe.db.exists("Raven Workspace Member", {"workspace": workspace, "user": doc.name}):
+			frappe.get_doc(
+				{"doctype": "Raven Workspace Member", "workspace": workspace, "user": doc.name}
+			).insert(ignore_permissions=True)

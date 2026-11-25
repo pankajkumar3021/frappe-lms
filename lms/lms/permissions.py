@@ -752,8 +752,19 @@ def can_publish(user: str | None = None) -> bool:
 	return is_site_administrator(user) or bool(has_moderator_role(user))
 
 
+# The site's own role for people who run a branch or the institute and take part in chat
+# (lms.lms.raven_chat.ensure_chat_admin_role creates it). It carries no desk access.
+CHAT_ADMIN_ROLE = "Admin"
+
 # Roles that make a chat user staff rather than a student (see is_chat_student).
-CHAT_STAFF_ROLES = ("Course Creator", "Moderator", "Batch Evaluator", "Raven Admin", "System Manager")
+CHAT_STAFF_ROLES = (
+	"Course Creator",
+	"Moderator",
+	"Batch Evaluator",
+	"Raven Admin",
+	"System Manager",
+	CHAT_ADMIN_ROLE,
+)
 
 
 def is_chat_student(user: str | None = None) -> bool:
