@@ -6,6 +6,7 @@ See lms.lms.raven_chat. Skipped where Raven is not installed (CI).
 """
 
 import unittest
+from unittest.mock import patch
 
 import frappe
 
@@ -331,4 +332,74 @@ class TestRavenChatStudentRules(BaseTestUtils):
 		admin.save(ignore_permissions=True)  # saving again adds nothing twice
 		self.assertEqual(
 			frappe.db.count("Raven Workspace Member", {"workspace": ws.name, "user": admin.name}), 1
+		)
+
+	# ---- admins in every class channel ------------------------------------------------
+
+	def _chat_admin(self):
+		raven_chat.ensure_chat_admin_role()
+		admin = self._create_user(
+			f"rc-admin-{self.hash}-{frappe.generate_hash(length=4)}@example.com",
+			"Branch",
+			"Admin",
+			["LMS Student"],
+		)
+		admin.reload()
+		admin.add_roles("Admin")
+		return admin.name
+
+	def _in_channel(self, channel, user):
+		return frappe.db.count("Raven Channel Member", {"channel_id": channel, "user_id": user})
+
+	def test_a_new_admin_joins_every_class_channel(self):
+		ws = self._workspace()
+		class_channel = self._channel(ws.name).name
+		other_channel = self._channel(ws.name).name
+		with patch.object(raven_chat, "class_channels", return_value=[class_channel]):
+			admin = self._chat_admin()
+			frappe.get_doc("User", admin).save(ignore_permissions=True)  # adds nothing twice
+
+		self.assertEqual(self._in_channel(class_channel, admin), 1)
+		self.assertEqual(self._in_channel(other_channel, admin), 0)
+		member = frappe.db.get_value(
+			"Raven Channel Member", {"channel_id": class_channel, "user_id": admin}, "added_by_rule"
+		)
+		# Not added by a raven_integration rule, so its sync never takes them out.
+		self.assertFalse(member)
+
+	def test_a_new_class_channel_takes_every_admin(self):
+		admin = self._chat_admin()
+		ws = self._workspace()
+		channel = self._channel(ws.name).name
+
+		mapping = frappe._dict(raven_channel=channel, stale=0)
+		raven_chat.add_chat_admins_to_class_channel(mapping)
+		raven_chat.add_chat_admins_to_class_channel(mapping)
+
+		self.assertEqual(self._in_channel(channel, admin), 1)
+		self.assertIn(admin, raven_chat.chat_admins())
+		self.assertNotIn(self.student, raven_chat.chat_admins())
+
+	def test_a_stale_mapping_adds_no_one(self):
+		admin = self._chat_admin()
+		ws = self._workspace()
+		channel = self._channel(ws.name).name
+
+		raven_chat.add_chat_admins_to_class_channel(frappe._dict(raven_channel=channel, stale=1))
+
+		self.assertEqual(self._in_channel(channel, admin), 0)
+
+	def test_a_new_workspace_takes_every_admin(self):
+		admin = self._chat_admin()
+		ws = self._workspace()
+		self.assertTrue(frappe.db.exists("Raven Workspace Member", {"workspace": ws.name, "user": admin}))
+
+	def test_admin_class_channel_hooks_are_registered(self):
+		events = frappe.get_hooks("doc_events")
+		self.assertIn(
+			"lms.lms.raven_chat.add_chat_admins_to_class_channel",
+			events["Raven Channel Mapping"]["on_update"],
+		)
+		self.assertIn(
+			"lms.lms.raven_chat.add_chat_admins_to_workspace", events["Raven Workspace"]["after_insert"]
 		)

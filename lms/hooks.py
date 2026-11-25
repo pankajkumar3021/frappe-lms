@@ -241,7 +241,12 @@ doc_events = {
 	# Students in Raven chat see only channels they are members of and share no media
 	# (lms.lms.raven_chat). These doctypes exist only where Raven is installed.
 	"Raven Workspace Member": {"validate": "lms.lms.raven_chat.validate_workspace_member"},
-	"Raven Workspace": {"validate": "lms.lms.raven_chat.validate_workspace"},
+	"Raven Workspace": {
+		"validate": "lms.lms.raven_chat.validate_workspace",
+		# Admin role holders join every workspace and every class channel.
+		"after_insert": "lms.lms.raven_chat.add_chat_admins_to_workspace",
+	},
+	"Raven Channel Mapping": {"on_update": "lms.lms.raven_chat.add_chat_admins_to_class_channel"},
 	"Raven Channel": {"validate": "lms.lms.raven_chat.validate_channel"},
 	"Raven Message": {"validate": "lms.lms.raven_chat.validate_message"},
 	"Raven User": {"after_insert": "lms.lms.raven_chat.give_chat_role"},
