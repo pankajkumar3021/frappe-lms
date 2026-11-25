@@ -46,6 +46,11 @@ web_include_js = []
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+# "Clear chat history" on Raven's forms (lms.lms.raven_retention); unused without Raven.
+doctype_js = {
+	"Raven Workspace": "public/js/raven_chat_history.js",
+	"Raven Channel": "public/js/raven_chat_history.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -89,6 +94,8 @@ after_migrate = [
 	"lms.lms.doctype.lms_payment.lms_payment.add_unique_payment_id_constraint",
 	# Raven chat: students keep chat without desk access (see lms.lms.raven_chat).
 	"lms.lms.raven_chat.keep_raven_user_role_off_desk",
+	# Raven chat: how long messages are kept (see lms.lms.raven_retention).
+	"lms.lms.raven_retention.ensure_retention_fields",
 	"lms.lms.raven_chat.ensure_chat_admin_role",
 	# Also on migrate, not only after_sync. Both seeders are create-if-absent, and
 	# running the sidebar one on fresh installs alone means a fourteenth built-in
@@ -262,6 +269,10 @@ scheduler_events = {
 		"lms.lms.doctype.lms_course.lms_course.send_notification_for_published_courses",
 		"lms.lms.doctype.course_lesson.course_lesson.rename_settled_untitled_lessons",
 		"lms.lms.doctype.course_evaluator.course_evaluator.clear_expired_time_off",
+	],
+	"daily_long": [
+		# Raven chat: delete messages older than each workspace keeps them.
+		"lms.lms.raven_retention.delete_old_messages",
 	],
 }
 
