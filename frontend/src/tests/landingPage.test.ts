@@ -6,7 +6,12 @@ import Landing from '@/pages/Landing/Landing.vue'
 config.global.mocks = {
 	...config.global.mocks,
 	__: (message: string) =>
-		/{\d+}/.test(message) ? { format: () => message } : message,
+		/{\d+}/.test(message)
+			? {
+					format: (...args: string[]) =>
+						message.replace(/{(\d+)}/g, (_, i) => args[Number(i)]),
+				}
+			: message,
 }
 
 const landing = vi.hoisted(() => ({
@@ -29,6 +34,7 @@ vi.mock('frappe-ui', () => ({
 				: landing.courses
 		},
 		loading: false,
+		fetch: vi.fn(),
 	}),
 }))
 
@@ -124,13 +130,15 @@ beforeEach(() => {
 })
 
 describe('Landing page', () => {
-	it('shows the configured brand, hero and Student Login, and the course cards with labels', async () => {
+	it('shows the configured brand, hero and Login, and the course cards with labels', async () => {
 		const wrapper = mountLanding()
 		await flushPromises()
 
 		expect(wrapper.text()).toContain('Test Institute')
+		expect(wrapper.text()).toContain('Eyebrow here')
 		expect(wrapper.text()).toContain('Headline here')
-		expect(wrapper.text()).toContain('Student Login')
+		expect(wrapper.text()).toContain('Lede here')
+		expect(wrapper.find('a[href="/login"]').text()).toBe('Login')
 		expect(wrapper.text()).toContain('Maths Foundation')
 		expect(wrapper.text()).toContain('Self Paced Physics')
 		expect(wrapper.text()).toContain('Online self-paced')
@@ -161,7 +169,10 @@ describe('Landing page', () => {
 			expect(wrapper.text()).toContain(branch.label)
 			expect(wrapper.text()).toContain(branch.phone)
 		}
-		expect(wrapper.text()).not.toMatch(/₹/)
+		// The test series prizes are the only rupee amounts on the page.
+		const prizes = wrapper.find('#test-series ul').text()
+		expect(prizes).toContain('₹50,000')
+		expect(wrapper.text().replace(prizes, '')).not.toMatch(/₹/)
 		wrapper.unmount()
 	})
 
@@ -194,53 +205,152 @@ describe('Landing page', () => {
 		wrapper.unmount()
 	})
 
-	it('carousel shows one slide at a time, moves with the arrows and the dots', async () => {
+	it('the navigation has the programmes menu and the section links', async () => {
 		const wrapper = mountLanding()
 		await flushPromises()
 
-		const active = () =>
-			wrapper.findAll('.lp-slide').filter((el) => el.classes('is-active'))
-		expect(wrapper.findAll('.lp-slide')).toHaveLength(
-			sampleContent.slides.length,
-		)
-		expect(active()).toHaveLength(1)
-		expect(active()[0].text()).toContain('Slide one')
-
-		await wrapper.find('[aria-label="Next slide"]').trigger('click')
-		expect(active()[0].text()).toContain('Slide two')
-
-		const dots = wrapper.findAll('.lp-dot')
-		await dots[2].trigger('click')
-		expect(active()[0].text()).toContain('Slide three')
-		expect(dots[2].attributes('aria-current')).toBe('true')
-		expect(dots[0].attributes('aria-current')).toBe('false')
-		wrapper.unmount()
-	})
-
-	it('a slide without a button shows no button', async () => {
-		const wrapper = mountLanding()
-		await flushPromises()
-
-		const third = wrapper.findAll('.lp-slide')[2]
-		expect(third.find('a').exists()).toBe(false)
-		wrapper.unmount()
-	})
-
-	it('the navigation has the six section links', async () => {
-		const wrapper = mountLanding()
-		await flushPromises()
-
-		const labels = wrapper.findAll('nav a').map((a) => a.text())
-		for (const label of [
-			'Classroom Courses',
+		const nav = wrapper.find('nav')
+		expect(nav.findAll('button').map((b) => b.text())).toEqual([
+			'Classroom Programmes',
 			'Online Courses',
+		])
+		const labels = nav.findAll('a').map((a) => a.text())
+		for (const label of [
 			'Test Series',
-			'Results',
-			'Study Materials',
+			'Study Material',
 			'Scholarships',
+			'Branches',
+			'Contact',
 		]) {
-			expect(labels).toContain(label)
+			expect(labels.some((text) => text.startsWith(label))).toBe(true)
 		}
+		wrapper.unmount()
+	})
+
+	it('Classroom Programmes opens and closes the list of courses offered', async () => {
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const toggle = wrapper.find('nav button')
+		expect(wrapper.find('#lp-classroom-menu').exists()).toBe(false)
+		expect(toggle.attributes('aria-expanded')).toBe('false')
+
+		await toggle.trigger('click')
+		const menu = wrapper.find('#lp-classroom-menu')
+		expect(toggle.attributes('aria-expanded')).toBe('true')
+		expect(menu.text()).toContain('Courses offered by Test Institute')
+		expect(menu.findAll('li')).toHaveLength(9)
+		expect(menu.text()).toContain('IIT-JEE / NEET Rank Booster')
+		expect(menu.text()).toContain('Class 11–12 Science (PCM / PCB)')
+
+		await wrapper.find('[aria-label="Close courses"]').trigger('click')
+		expect(wrapper.find('#lp-classroom-menu').exists()).toBe(false)
+		wrapper.unmount()
+	})
+
+	it('Online Courses opens the online course list with the mobile app note', async () => {
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const [classroom, online] = wrapper.find('nav').findAll('button')
+		await online.trigger('click')
+		const menu = wrapper.find('#lp-online-menu')
+		expect(online.attributes('aria-expanded')).toBe('true')
+		expect(menu.text()).toContain('Online courses by Test Institute')
+		expect(menu.text()).toContain(
+			'Live classes are taken on our Test Institute mobile app.',
+		)
+		// Only the self-paced course; offline batches stay in the classroom list.
+		const items = menu.findAll('li')
+		expect(items).toHaveLength(1)
+		expect(items[0].text()).toContain('Self Paced Physics')
+		expect(items[0].text()).toContain('Free · Online')
+		expect(items[0].find('a').attributes('href')).toBe('/lms/courses/physics-s')
+
+		// Opening the other menu swaps the panel instead of stacking two.
+		await classroom.trigger('click')
+		expect(wrapper.find('#lp-online-menu').exists()).toBe(false)
+		expect(wrapper.find('#lp-classroom-menu').exists()).toBe(true)
+		expect(online.attributes('aria-expanded')).toBe('false')
+		wrapper.unmount()
+	})
+
+	it('the programme cards show bold class details and the full Rank Booster name', async () => {
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const cards = wrapper.findAll('#programmes a')
+		expect(cards.map((c) => c.text())).toEqual([
+			expect.stringContaining('Foundation'),
+			expect.stringContaining('Pre-Board'),
+			expect.stringContaining('Launch Pad'),
+			expect.stringContaining('IIT-JEE / NEET Rank Booster'),
+		])
+		expect(cards[0].find('.lp-class-detail').text()).toBe(
+			'Class 5–8 · Olympiad',
+		)
+		wrapper.unmount()
+	})
+
+	it('the branch pill moves to the next branch and the call button follows it', async () => {
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const pill = wrapper.find('[aria-label="Change branch"]')
+		expect(pill.text()).toContain('Main Campus')
+		expect(wrapper.find('a[href^="tel:"]').attributes('href')).toBe(
+			'tel:+911111111111',
+		)
+
+		await pill.trigger('click')
+		expect(pill.text()).toContain('Second Campus')
+		expect(wrapper.find('a[href^="tel:"]').attributes('href')).toBe(
+			'tel:+112222222',
+		)
+
+		await pill.trigger('click')
+		expect(pill.text()).toContain('Main Campus')
+		wrapper.unmount()
+	})
+
+	it('the hero shows the why-us list beside the photo and counts the branches', async () => {
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const why = wrapper.find('#why')
+		expect(why.find('h2').text()).toBe('Why Test Institute?')
+		expect(why.findAll('li')).toHaveLength(4)
+		expect(wrapper.find('.lp-hero img').attributes('alt')).toBeTruthy()
+		expect(wrapper.find('.lp-facts').text()).toContain('2')
+		expect(wrapper.find('.lp-facts').text()).toContain('Classroom branches')
+		wrapper.unmount()
+	})
+
+	it('falls back to the default hero copy when the settings leave it blank', async () => {
+		landing.content = {
+			...sampleContent,
+			hero: { eyebrow: '', headline: '', lede: '' },
+		}
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		expect(wrapper.find('h1').text()).toContain('Building your foundation')
+		expect(wrapper.find('h1').text()).toContain('for a brighter future')
+		wrapper.unmount()
+	})
+
+	it('a light brand colour leaves the white-text banner on its default blue', async () => {
+		landing.content = {
+			...sampleContent,
+			brand: { ...sampleContent.brand, primary_colour: '#fde68a' },
+		}
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const style = wrapper.find('.lp-root').attributes('style')
+		expect(style).toContain('--lp-accent: #fde68a')
+		expect(style).not.toContain('--lp-banner')
+		expect(style).toContain('--lp-accent-text: #111827')
 		wrapper.unmount()
 	})
 })
