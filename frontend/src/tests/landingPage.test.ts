@@ -14,6 +14,10 @@ config.global.mocks = {
 			: message,
 }
 
+const session = vi.hoisted(() => ({
+	brand: { name: 'Site Name', logo: null as unknown },
+}))
+
 const landing = vi.hoisted(() => ({
 	courses: [] as Array<Record<string, unknown>>,
 	content: {} as Record<string, unknown>,
@@ -39,7 +43,7 @@ vi.mock('frappe-ui', () => ({
 }))
 
 vi.mock('@/stores/session', () => ({
-	sessionStore: () => ({ brand: { name: 'Site Name', logo: null } }),
+	sessionStore: () => session,
 }))
 
 const sampleCourses = [
@@ -124,6 +128,7 @@ function mountLanding() {
 }
 
 beforeEach(() => {
+	session.brand = { name: 'Site Name', logo: null }
 	landing.courses = sampleCourses
 	landing.content = sampleContent
 	document.body.innerHTML = ''
@@ -351,6 +356,27 @@ describe('Landing page', () => {
 		expect(style).toContain('--lp-accent: #fde68a')
 		expect(style).not.toContain('--lp-banner')
 		expect(style).toContain('--lp-accent-text: #111827')
+		wrapper.unmount()
+	})
+
+	it('shows the site logo when the session gives it as a file record', async () => {
+		// get_branding returns the logo as { file_name, file_size, file_url }.
+		session.brand = {
+			name: 'Site Name',
+			logo: {
+				file_name: 'seal.png',
+				file_size: 10,
+				file_url: '/files/seal.png',
+			},
+		}
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		expect(wrapper.find('header.lp-nav').exists()).toBe(true)
+		expect(wrapper.find('.lp-logo img').attributes('src')).toBe(
+			'/files/seal.png',
+		)
+		expect(wrapper.find('a[href="/login"]').exists()).toBe(true)
 		wrapper.unmount()
 	})
 })
