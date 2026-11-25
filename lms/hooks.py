@@ -89,6 +89,7 @@ after_migrate = [
 	"lms.lms.doctype.lms_payment.lms_payment.add_unique_payment_id_constraint",
 	# Raven chat: students keep chat without desk access (see lms.lms.raven_chat).
 	"lms.lms.raven_chat.keep_raven_user_role_off_desk",
+	"lms.lms.raven_chat.ensure_chat_admin_role",
 	# Also on migrate, not only after_sync. Both seeders are create-if-absent, and
 	# running the sidebar one on fresh installs alone means a fourteenth built-in
 	# added to `standard_sidebar_items` later never reaches a site that has
@@ -212,8 +213,13 @@ doc_events = {
 	"LMS Program Course": {"validate": CHILD_ROW_MOVE_GATE},
 	"LMS Program Member": {"validate": CHILD_ROW_MOVE_GATE},
 	"User": {
-		"validate": "lms.lms.user.validate_username_duplicates",
+		"validate": [
+			"lms.lms.user.validate_username_duplicates",
+			"lms.lms.raven_chat.give_chat_admin_the_raven_role",
+		],
 		"before_insert": "lms.lms.user.add_lms_student_role",
+		# Admin role holders get chat (lms.lms.raven_chat).
+		"on_update": "lms.lms.raven_chat.provision_chat_admin",
 	},
 	# Product events for Pulse: one per step a site takes (see lms.lms.telemetry).
 	"LMS Course": {"on_update": "lms.lms.telemetry.course_saved"},

@@ -299,3 +299,36 @@ class TestRavenChatStudentRules(BaseTestUtils):
 		)
 		self.assertIn("Raven User", frappe.get_roles(learner))
 		self.assertEqual(frappe.db.get_value("User", learner, "user_type"), "Website User")
+
+	def test_the_admin_role_exists_without_desk_access(self):
+		raven_chat.ensure_chat_admin_role()
+		self.assertEqual(frappe.db.get_value("Role", "Admin", "desk_access"), 0)
+		self.assertIn("lms.lms.raven_chat.ensure_chat_admin_role", frappe.get_hooks("after_migrate"))
+
+	def test_an_admin_is_chat_staff_in_every_workspace(self):
+		"""Given the Admin role, a person gets a Raven profile and joins every workspace,
+		so they can be picked for any channel, and counts as staff, not a student."""
+		raven_chat.ensure_chat_admin_role()
+		ws = self._workspace()
+		admin = self._create_user(f"rc-admin-{self.hash}@example.com", "Branch", "Admin", ["LMS Student"])
+		self.assertFalse(frappe.db.exists("Raven User", {"user": admin.name}))
+
+		admin.reload()
+		admin.add_roles("Admin")
+
+		self.assertEqual(frappe.db.get_value("User", admin.name, "user_type"), "Website User")
+		self.assertIn("Raven User", frappe.get_roles(admin.name))
+		self.assertTrue(frappe.db.exists("Raven User", {"user": admin.name}))
+		self.assertTrue(
+			frappe.db.exists("Raven Workspace Member", {"workspace": ws.name, "user": admin.name})
+		)
+		from lms.lms.permissions import is_chat_student
+
+		self.assertFalse(is_chat_student(admin.name))
+		self.assertFalse(raven_chat.workspace_has_students(ws.name))
+
+		admin.reload()
+		admin.save(ignore_permissions=True)  # saving again adds nothing twice
+		self.assertEqual(
+			frappe.db.count("Raven Workspace Member", {"workspace": ws.name, "user": admin.name}), 1
+		)
