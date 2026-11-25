@@ -1,82 +1,83 @@
 <template>
-	<section
-		id="courses"
-		class="relative z-[1] mx-auto max-w-6xl scroll-mt-24 px-4 py-14"
-	>
-		<div class="flex flex-wrap items-end justify-between gap-4">
-			<div>
-				<h2 class="lp-section-title">{{ __('Courses') }}</h2>
-				<p class="lp-muted mt-2">
-					{{
-						__('Free and paid courses, taught in batches or self-paced online.')
-					}}
-				</p>
-			</div>
-			<div
-				class="flex flex-wrap gap-2"
-				role="group"
-				:aria-label="__('Filter courses')"
-			>
-				<button
-					v-for="tab in tabs"
-					:key="tab.value"
-					type="button"
-					class="lp-tab"
-					:aria-pressed="String(active === tab.value)"
-					@click="active = tab.value"
-				>
-					{{ tab.label }}
-				</button>
-			</div>
-		</div>
-
-		<p v-if="courses.loading" class="lp-muted mt-8">
-			{{ __('Loading courses…') }}
-		</p>
-		<p v-else-if="!visible.length" class="lp-muted mt-8">
-			{{ __('No courses to show yet.') }}
-		</p>
-
-		<div v-else class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-			<article
-				v-for="course in visible"
-				:key="course.name"
-				class="lp-card flex flex-col gap-3 p-4"
-			>
-				<img
-					v-if="course.image"
-					:src="safeUrl(course.image)"
-					alt=""
-					class="aspect-video w-full max-w-full rounded-lg object-cover"
-				/>
-				<div class="flex flex-wrap gap-2">
-					<span
-						class="rounded-md border border-[var(--lp-border-strong)] px-2 py-0.5 text-xs font-medium text-[var(--lp-body)]"
-					>
-						{{ course.paid_course ? __('Paid') : __('Free') }}
-					</span>
-					<span
-						class="rounded-md bg-[var(--lp-accent)] px-2 py-0.5 text-xs font-medium text-[var(--lp-on-accent)]"
-					>
+	<section id="courses" class="lp-section scroll-mt-24">
+		<div class="lp-container">
+			<div class="flex flex-wrap items-end justify-between gap-4">
+				<div>
+					<h2 class="lp-section-title">{{ __('Courses') }}</h2>
+					<p class="lp-muted mt-2">
 						{{
-							course.delivery === 'offline'
-								? __('Offline batch')
-								: __('Online self-paced')
+							__(
+								'Free and paid courses, taught in batches or self-paced online.',
+							)
 						}}
-					</span>
+					</p>
 				</div>
-				<h3 class="text-lg font-medium">{{ course.title }}</h3>
-				<p v-if="course.short_introduction" class="lp-muted text-sm">
-					{{ course.short_introduction }}
-				</p>
-				<div class="mt-auto pt-2">
-					<a
-						:href="safeUrl(`/lms/courses/${course.name}`)"
-						class="lp-btn-secondary no-underline"
-						>{{ __('View course') }}</a
+				<div
+					class="flex flex-wrap gap-2"
+					role="group"
+					:aria-label="__('Filter courses')"
+				>
+					<button
+						v-for="tab in tabs"
+						:key="tab.value"
+						type="button"
+						class="lp-tab"
+						:aria-pressed="String(active === tab.value)"
+						@click="active = tab.value"
 					>
+						{{ tab.label }}
+					</button>
 				</div>
-			</article>
+			</div>
+
+			<p v-if="courses.loading" class="lp-muted mt-8">
+				{{ __('Loading courses…') }}
+			</p>
+			<p v-else-if="!visible.length" class="lp-muted mt-8">
+				{{ __('No courses to show yet.') }}
+			</p>
+
+			<div v-else class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+				<article
+					v-for="course in visible"
+					:key="course.name"
+					class="lp-card flex flex-col gap-3 p-4"
+				>
+					<img
+						v-if="course.image"
+						:src="safeUrl(course.image)"
+						alt=""
+						class="aspect-video w-full max-w-full rounded-lg object-cover"
+					/>
+					<div class="flex flex-wrap gap-2">
+						<span
+							class="rounded-md border border-[var(--lp-border-strong)] px-2 py-0.5 text-xs font-medium text-[var(--lp-body)]"
+						>
+							{{ course.paid_course ? __('Paid') : __('Free') }}
+						</span>
+						<span
+							class="rounded-md bg-[var(--lp-accent)] px-2 py-0.5 text-xs font-medium text-[var(--lp-on-accent)]"
+						>
+							{{
+								course.delivery === 'offline'
+									? __('Offline batch')
+									: __('Online self-paced')
+							}}
+						</span>
+					</div>
+					<h3 class="lp-heading text-lg">{{ course.title }}</h3>
+					<p v-if="course.short_introduction" class="lp-muted text-sm">
+						{{ course.short_introduction }}
+					</p>
+					<div class="mt-auto pt-2">
+						<a
+							:href="safeUrl(`/lms/courses/${course.name}`)"
+							class="lp-btn-secondary no-underline"
+							>{{ __('View course') }}</a
+						>
+					</div>
+				</article>
+			</div>
 		</div>
 	</section>
 </template>

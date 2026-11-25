@@ -95,7 +95,6 @@ declare module 'vue' {
     JobApplicationModal: typeof import('./src/components/Modals/JobApplicationModal.vue')['default']
     JobCard: typeof import('./src/components/JobCard.vue')['default']
     LandingBranches: typeof import('./src/components/Landing/LandingBranches.vue')['default']
-    LandingCarousel: typeof import('./src/components/Landing/LandingCarousel.vue')['default']
     LandingContact: typeof import('./src/components/Landing/LandingContact.vue')['default']
     LandingCourses: typeof import('./src/components/Landing/LandingCourses.vue')['default']
     LandingHeader: typeof import('./src/components/Landing/LandingHeader.vue')['default']

@@ -5,7 +5,7 @@ import { safeUrl } from '../utils/safeUrl'
 describe('safeUrl', () => {
 	it('passes http, https and site-relative URLs through unchanged', () => {
 		expect(safeUrl('https://example.com/a.pdf')).toBe(
-			'https://example.com/a.pdf'
+			'https://example.com/a.pdf',
 		)
 		expect(safeUrl('/files/a.pdf')).toBe('/files/a.pdf')
 	})
@@ -15,6 +15,11 @@ describe('safeUrl', () => {
 		expect(safeUrl('JaVaScRiPt:alert(1)')).toBeUndefined()
 		expect(safeUrl('  javascript:alert(1)')).toBeUndefined()
 		expect(safeUrl('java\tscript:alert(1)')).toBeUndefined()
+	})
+
+	it('passes mailto: and tel: links through unchanged', () => {
+		expect(safeUrl('mailto:info@example.com')).toBe('mailto:info@example.com')
+		expect(safeUrl('tel:+917903466927')).toBe('tel:+917903466927')
 	})
 
 	it('drops data: and vbscript:', () => {
@@ -48,10 +53,12 @@ describe('safeUrl', () => {
 		expect(safeUrl(jpeg)).toBeUndefined()
 		expect(safeUrl(jpeg, { inlineImage: true })).toBe(jpeg)
 		expect(
-			safeUrl('data:image/svg+xml;base64,AAAA', { inlineImage: true })
+			safeUrl('data:image/svg+xml;base64,AAAA', { inlineImage: true }),
 		).toBeUndefined()
 		expect(
-			safeUrl('data:text/html,<script>alert(1)</script>', { inlineImage: true })
+			safeUrl('data:text/html,<script>alert(1)</script>', {
+				inlineImage: true,
+			}),
 		).toBeUndefined()
 	})
 

@@ -12,7 +12,7 @@
 // parser normalises `\` to `/` for http(s), so `/\host/p` is `//host/p` — an
 // off-origin URL that reads as a path. Both spellings have to fail here for the
 // allowlist to mean what its name says.
-const ALLOWED = /^(https?:|\/(?![/\\])|#|mailto:)/i
+const ALLOWED = /^(https?:|\/(?![/\\])|#|mailto:|tel:)/i
 const IGNORED_BY_BROWSER = /[\u0000-\u0020]/g
 
 // Opt-in, for an <img> src only: a camera still the page captured itself is a
@@ -22,7 +22,7 @@ const INLINE_IMAGE = /^data:image\/(jpeg|png|webp);base64,/i
 
 export const safeUrl = (
 	value?: string | null,
-	options: { inlineImage?: boolean } = {}
+	options: { inlineImage?: boolean } = {},
 ): string | undefined => {
 	if (!value) return undefined
 	const url = value.replace(IGNORED_BY_BROWSER, '')
