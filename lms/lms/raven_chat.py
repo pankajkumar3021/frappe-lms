@@ -20,8 +20,8 @@ any member share files and images. For students (Website Users, see
    checks. raven_integration creates the profile alone; without the role a student
    would be shown "You cannot access Raven".
 4. A person given the site's Admin role (created on migrate, no desk access) is chat
-   staff: they get a Raven profile and join every workspace, so they can be picked for
-   any channel, including the class channels.
+   staff: they get a Raven profile and join every workspace and every class channel
+   (the channels raven_integration keeps for batches), now and as new ones are made.
 
 The hooks are registered in `lms/hooks.py` under doc_events; they never fire on a site
 without Raven, because its doctypes do not exist there.
@@ -238,9 +238,9 @@ def give_chat_admin_the_raven_role(doc, method=None):
 
 def provision_chat_admin(doc, method=None):
 	"""User on_update: someone holding the Admin role gets a Raven profile (and with it
-	the Raven User role, see give_chat_role) and joins every Raven workspace. Raven offers
-	only profiles in its pickers, and a channel's picker only the workspace's members.
-	Taking the role away later leaves chat as it is."""
+	the Raven User role, see give_chat_role), joins every Raven workspace and every class
+	channel. Raven offers only profiles in its pickers, and a channel's picker only the
+	workspace's members. Taking the role away later leaves chat as it is."""
 	if "raven" not in frappe.get_installed_apps() or doc.name in ("Administrator", "Guest"):
 		return
 	if CHAT_ADMIN_ROLE not in {row.role for row in doc.get("roles", [])}:
@@ -250,7 +250,68 @@ def provision_chat_admin(doc, method=None):
 			ignore_permissions=True
 		)
 	for workspace in frappe.get_all("Raven Workspace", pluck="name"):
-		if not frappe.db.exists("Raven Workspace Member", {"workspace": workspace, "user": doc.name}):
-			frappe.get_doc(
-				{"doctype": "Raven Workspace Member", "workspace": workspace, "user": doc.name}
-			).insert(ignore_permissions=True)
+		_join_workspace(workspace, doc.name)
+	for channel in class_channels():
+		_join_channel(channel, doc.name)
+
+
+def chat_admins() -> list[str]:
+	"""Everyone holding the Admin role who has a Raven profile."""
+	has_role = frappe.qb.DocType("Has Role")
+	raven_user = frappe.qb.DocType("Raven User")
+	return (
+		frappe.qb.from_(has_role)
+		.join(raven_user)
+		.on(raven_user.user == has_role.parent)
+		.select(has_role.parent)
+		.distinct()
+		.where((has_role.role == CHAT_ADMIN_ROLE) & (has_role.parenttype == "User"))
+		.run(pluck=True)
+	)
+
+
+def class_channels() -> list[str]:
+	"""The Raven channels raven_integration keeps for batches (one per Raven Channel
+	Mapping). None where raven_integration is not installed."""
+	if "raven_integration" not in frappe.get_installed_apps():
+		return []
+	return frappe.get_all(
+		"Raven Channel Mapping",
+		filters={"stale": 0, "raven_channel": ["is", "set"]},
+		pluck="raven_channel",
+	)
+
+
+def add_chat_admins_to_workspace(doc, method=None):
+	"""Raven Workspace after_insert: admins join a new workspace as they joined the old
+	ones in provision_chat_admin, so its channels can take them."""
+	for admin in chat_admins():
+		_join_workspace(doc.name, admin)
+
+
+def add_chat_admins_to_class_channel(doc, method=None):
+	"""Raven Channel Mapping on_update: a new class channel takes every admin.
+
+	They join as plain members, not by a rule, so raven_integration's sync, which only
+	removes the members its rules added, leaves them in place."""
+	if doc.get("stale") or not doc.get("raven_channel"):
+		return
+	workspace = frappe.db.get_value("Raven Channel", doc.raven_channel, "workspace")
+	for admin in chat_admins():
+		if workspace:
+			_join_workspace(workspace, admin)
+		_join_channel(doc.raven_channel, admin)
+
+
+def _join_workspace(workspace: str, user: str):
+	if not frappe.db.exists("Raven Workspace Member", {"workspace": workspace, "user": user}):
+		frappe.get_doc({"doctype": "Raven Workspace Member", "workspace": workspace, "user": user}).insert(
+			ignore_permissions=True
+		)
+
+
+def _join_channel(channel: str, user: str):
+	if not frappe.db.exists("Raven Channel Member", {"channel_id": channel, "user_id": user}):
+		frappe.get_doc({"doctype": "Raven Channel Member", "channel_id": channel, "user_id": user}).insert(
+			ignore_permissions=True
+		)
