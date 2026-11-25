@@ -113,8 +113,16 @@ const content = computed<LandingContent>(() => {
 const brand = computed(() => ({
 	// A blank name in settings falls back to the site name.
 	name: content.value.brand.name || sessionStore().brand.name || '',
-	logo: content.value.brand.logo || sessionStore().brand.logo || null,
+	logo: logoUrl(content.value.brand.logo) || logoUrl(sessionStore().brand.logo),
 }))
+
+// The site logo from get_branding is a file record ({ file_url, … }), not a URL,
+// while the landing settings give a plain URL. Accept either.
+function logoUrl(value: unknown): string | null {
+	if (typeof value === 'string') return value || null
+	const fileUrl = (value as { file_url?: unknown } | null)?.file_url
+	return typeof fileUrl === 'string' && fileUrl ? fileUrl : null
+}
 
 // The brand colour from settings sets the accent. The stylesheet's default applies when blank.
 const brandStyle = computed(() => {
