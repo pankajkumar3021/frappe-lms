@@ -319,7 +319,9 @@ class TestRavenChatStudentRules(BaseTestUtils):
 		self.assertEqual(frappe.db.get_value("User", admin.name, "user_type"), "Website User")
 		self.assertIn("Raven User", frappe.get_roles(admin.name))
 		self.assertTrue(frappe.db.exists("Raven User", {"user": admin.name}))
-		self.assertTrue(frappe.db.exists("Raven Workspace Member", {"workspace": ws.name, "user": admin.name}))
+		self.assertTrue(
+			frappe.db.exists("Raven Workspace Member", {"workspace": ws.name, "user": admin.name})
+		)
 		from lms.lms.permissions import is_chat_student
 
 		self.assertFalse(is_chat_student(admin.name))
