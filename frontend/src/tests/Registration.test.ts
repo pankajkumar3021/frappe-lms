@@ -101,6 +101,22 @@ describe('Registration page', () => {
 		w.unmount()
 	})
 
+	it.each([
+		['09876543210', false],
+		['(98765) 43210', false],
+		['919876543210', false],
+		['5876543210', true],
+		['1234567890', true],
+	])('checks the mobile number %s like the server', async (number, invalid) => {
+		const w = await mountPage()
+		await pick(w, 0, 'Class 10')
+		await pick(w, 1, 'Noida')
+		await w.findAll('input[type="checkbox"]')[0].setValue(true)
+		await w.get('input[type="text"][inputmode="tel"]').setValue(number)
+		expect(button(w).attributes('disabled') !== undefined).toBe(invalid)
+		w.unmount()
+	})
+
 	it('submits the values and opens Courses filtered to the class', async () => {
 		const w = await mountPage()
 		await fillValid(w)

@@ -218,12 +218,19 @@ def give_chat_role(doc, method=None):
 
 
 def ensure_chat_admin_role():
-	"""after_migrate: the Admin role exists, without desk access, so its holders stay
-	Website Users and use the LMS and chat rather than the desk."""
+	"""The Admin role exists, without desk access, so its holders stay Website Users and
+	use the LMS and chat rather than the desk.
+
+	Runs on every migrate (after_migrate) and once before the DocTypes sync
+	(patches.v2_0.ensure_chat_admin_role_off_desk). Student Registration names the role in
+	its permissions, and Frappe creates a missing role from a DocType's permissions with
+	desk access on, so an existing role is corrected, not only a missing one made."""
 	if not frappe.db.exists("Role", CHAT_ADMIN_ROLE):
 		frappe.get_doc(
 			{"doctype": "Role", "role_name": CHAT_ADMIN_ROLE, "desk_access": 0, "is_custom": 1}
 		).insert(ignore_permissions=True)
+	elif frappe.db.get_value("Role", CHAT_ADMIN_ROLE, "desk_access"):
+		frappe.db.set_value("Role", CHAT_ADMIN_ROLE, "desk_access", 0)
 
 
 def give_chat_admin_the_raven_role(doc, method=None):

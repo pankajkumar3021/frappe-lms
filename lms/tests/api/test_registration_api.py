@@ -3,6 +3,7 @@ from unittest.mock import patch
 import frappe
 
 from lms.lms.api import get_user_info
+from lms.lms.raven_chat import ensure_chat_admin_role
 from lms.lms.registration import (
 	get_registration_state,
 	normalize_mobile,
@@ -45,16 +46,16 @@ class TestRegistrationApi(BaseTestUtils):
 		self.assertEqual(state["prefill"]["full_name"], "Reg Student")
 
 	def test_staff_do_not_need_registration(self):
-		if not frappe.db.exists("Role", "Admin"):
-			frappe.get_doc({"doctype": "Role", "role_name": "Admin", "desk_access": 0}).insert()
+		ensure_chat_admin_role()
 		for role in ("Course Creator", "Moderator", "Admin"):
 			with self.subTest(role=role):
 				user = self._student(roles=("LMS Student", role))
 				self.assertFalse(self._state_for(user)["needs_registration"])
 		with self.subTest(role="System User"):
 			frappe.set_user("Administrator")
-			if not frappe.db.exists("Role", "Reg Desk Role"):
-				frappe.get_doc({"doctype": "Role", "role_name": "Reg Desk Role", "desk_access": 1}).insert()
+			frappe.get_doc({"doctype": "Role", "role_name": "Reg Desk Role", "desk_access": 1}).insert(
+				ignore_if_duplicate=True
+			)
 			user = self._student(roles=("Reg Desk Role",), user_type="System User")
 			self.assertFalse(self._state_for(user)["needs_registration"])
 

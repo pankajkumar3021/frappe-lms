@@ -137,12 +137,17 @@ const toOptions = (values: string[]) =>
 const classOptions = computed(() => toOptions(classes.value))
 const cityOptions = computed(() => toOptions(cities.value))
 
-// The server cleans the number up; the client only counts digits once spaces
-// and a +91 prefix are gone.
-const digits = computed(() =>
-	form.contact_number.replace(/[\s-]/g, '').replace(/^\+?91(?=\d{10}$)/, ''),
-)
-const numberValid = computed(() => /^\d{10}$/.test(digits.value))
+// Mirrors the server's normalize_mobile: drop spaces, dashes and brackets, then a
+// +91 prefix, a 91 prefix on 12 digits or a leading 0 on 11 digits. A valid number
+// is 10 digits starting with 6-9.
+const digits = computed(() => {
+	const value = form.contact_number.replace(/[\s\-()]/g, '')
+	if (value.startsWith('+91')) return value.slice(3)
+	if (value.length === 12 && value.startsWith('91')) return value.slice(2)
+	if (value.length === 11 && value.startsWith('0')) return value.slice(1)
+	return value
+})
+const numberValid = computed(() => /^[6-9]\d{9}$/.test(digits.value))
 const nameError = computed(() =>
 	form.full_name.trim() ? undefined : __('Enter your full name'),
 )

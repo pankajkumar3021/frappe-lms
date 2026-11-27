@@ -65,7 +65,7 @@ def get_registration_state() -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-@rate_limit(limit=5, seconds=60)
+@rate_limit(limit=5, seconds=60, user_based=True)
 def submit_registration(
 	full_name: str,
 	contact_number: str,
@@ -107,8 +107,8 @@ def submit_registration(
 			"registered_on": now_datetime(),
 		}
 	)
-	# nosemgrep: lms-unjustified-ignore-permissions - students have no DocPerm on Student Registration; the row is for session.user only and every field is validated above
 	try:
+		# nosemgrep: lms-unjustified-ignore-permissions - students have no DocPerm here; own row, fields validated
 		registration.insert(ignore_permissions=True)
 	except frappe.DuplicateEntryError:
 		# Two tabs or a double click can both pass the exists() check above.

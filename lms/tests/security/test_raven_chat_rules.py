@@ -306,6 +306,13 @@ class TestRavenChatStudentRules(BaseTestUtils):
 		self.assertEqual(frappe.db.get_value("Role", "Admin", "desk_access"), 0)
 		self.assertIn("lms.lms.raven_chat.ensure_chat_admin_role", frappe.get_hooks("after_migrate"))
 
+	def test_an_existing_admin_role_with_desk_access_is_turned_off_desk(self):
+		"""Frappe creates a role named in a DocType's permissions with desk access on."""
+		raven_chat.ensure_chat_admin_role()
+		frappe.db.set_value("Role", "Admin", "desk_access", 1)
+		raven_chat.ensure_chat_admin_role()
+		self.assertEqual(frappe.db.get_value("Role", "Admin", "desk_access"), 0)
+
 	def test_an_admin_is_chat_staff_in_every_workspace(self):
 		"""Given the Admin role, a person gets a Raven profile and joins every workspace,
 		so they can be picked for any channel, and counts as staff, not a student."""

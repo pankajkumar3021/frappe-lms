@@ -4,6 +4,7 @@
 import frappe
 
 from lms.lms.permissions import can_manage_registrations, registration_query_conditions
+from lms.lms.raven_chat import ensure_chat_admin_role
 from lms.lms.registration import CITIES, CLASSES, FOLLOW_UP_STATUSES
 from lms.lms.test_helpers import BaseTestUtils
 
@@ -12,8 +13,7 @@ class TestStudentRegistration(BaseTestUtils):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		if not frappe.db.exists("Role", "Admin"):
-			frappe.get_doc({"doctype": "Role", "role_name": "Admin"}).insert()
+		ensure_chat_admin_role()
 		cls.student = cls._create_user("reg-student@example.com", "Reg", "Student", ["LMS Student"])
 		cls.creator = cls._create_user("reg-creator@example.com", "Reg", "Creator", ["Course Creator"])
 		cls.moderator = cls._create_user("reg-mod@example.com", "Reg", "Mod", ["Moderator"])
