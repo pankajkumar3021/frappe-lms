@@ -1437,6 +1437,7 @@ COURSE_LIST_FILTERS = frozenset(
 		"title",
 		"category",
 		"certification",
+		"class",
 		"enrolled",
 		"created",
 		"live",
@@ -1670,6 +1671,14 @@ def update_course_filters(filters: dict) -> tuple:
 		filters.update({"name": ["in", created_courses]})
 		del filters["created"]
 
+	if "class" in filters:
+		# registration imports permissions, which imports this module.
+		from lms.lms.registration import CLASSES
+
+		class_filter = filters.pop("class")
+		if class_filter in CLASSES:
+			restrict_to_names(filters, get_course_names_with_class_tag(class_filter))
+
 	if filters.get("live"):
 		filters.update({"featured": 0})
 		show_featured = True
@@ -1681,6 +1690,23 @@ def update_course_filters(filters: dict) -> tuple:
 		del filters["certification"]
 
 	return filters, or_filters, show_featured
+
+
+def get_course_names_with_class_tag(class_name: str) -> list:
+	"""Courses whose comma-separated tags include `class_name` as a whole tag, so
+	`Class 1` does not match `Class 10` or `Class 11 PCM`."""
+	rows = frappe.get_all("LMS Course", {"tags": ["like", f"%{class_name}%"]}, ["name", "tags"])
+	return [row.name for row in rows if class_name in [tag.strip() for tag in row.tags.split(",")]]
+
+
+def restrict_to_names(filters: dict, names: list) -> None:
+	"""Narrow the `name` filter to `names`, intersecting with one already set."""
+	existing = filters.get("name")
+	if isinstance(existing, list | tuple) and len(existing) == 2 and existing[0] == "in":
+		names = [name for name in names if name in existing[1]]
+	elif existing:
+		names = [name for name in names if name == existing]
+	filters["name"] = ["in", names or [""]]
 
 
 def get_enrollment_details(courses: list) -> list:
