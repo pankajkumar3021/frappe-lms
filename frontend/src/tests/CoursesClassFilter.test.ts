@@ -2,9 +2,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const { listResource, classNames } = vi.hoisted(() => ({
+const { listResource, classNames, stateFails } = vi.hoisted(() => ({
 	listResource: { current: null as any },
 	classNames: ['Class 9', 'Class 10', 'Class 12 PCM'],
+	stateFails: { value: false },
 }))
 
 vi.mock('frappe-ui', () => ({
@@ -21,7 +22,10 @@ vi.mock('frappe-ui', () => ({
 }))
 vi.mock('@/composables/useRegistrationState', () => ({
 	useRegistrationState: () => ({
-		getState: () => Promise.resolve({ classes: classNames }),
+		getState: () =>
+			stateFails.value
+				? Promise.reject(new Error('down'))
+				: Promise.resolve({ classes: classNames }),
 	}),
 }))
 vi.mock('@framework/ui/telemetry/index', () => ({
@@ -58,11 +62,12 @@ vi.mock('@/components/Layouts/pages/ListPage.vue', () => ({
 vi.stubGlobal('__', (s: string) => s)
 
 async function mountCourses(userData: Record<string, unknown> | null) {
+	const user = reactive({ data: userData })
 	const { default: Courses } = await import('@/pages/Courses/Courses.vue')
 	const wrapper = mount(Courses, {
 		global: {
 			provide: {
-				$user: { data: userData },
+				$user: user,
 				$dayjs: () => ({ add: () => ({ format: () => '' }) }),
 			},
 			mocks: { __: (s: string) => s },
@@ -70,13 +75,14 @@ async function mountCourses(userData: Record<string, unknown> | null) {
 		},
 	})
 	await flushPromises()
-	return wrapper
+	return Object.assign(wrapper, { user })
 }
 
 const sent = () => listResource.current.filters
 const select = (w: any) => w.find('[data-testid="Class"]')
 
 beforeEach(() => {
+	stateFails.value = false
 	window.history.replaceState({}, '', '/lms/courses')
 	listResource.current = reactive({
 		data: [],
@@ -126,5 +132,31 @@ describe('Courses class filter', () => {
 		await mountCourses(null)
 		expect(sent()).not.toHaveProperty('class')
 		expect(location.search).not.toContain('class')
+	})
+
+	it('keeps the control and offers the active class when the class list fails to load', async () => {
+		stateFails.value = true
+		const w = await mountCourses({ name: 'a@b.c', student_class: 'Class 10' })
+		expect(sent().class).toBe('Class 10')
+		expect(select(w).exists()).toBe(true)
+		await select(w).setValue('all')
+		await nextTick()
+		expect(sent()).not.toHaveProperty('class')
+	})
+
+	it('applies the student class when the user resource resolves after mount', async () => {
+		const w: any = await mountCourses({})
+		expect(sent()).not.toHaveProperty('class')
+		w.user.data = { name: 'a@b.c', student_class: 'Class 9' }
+		await flushPromises()
+		expect(sent().class).toBe('Class 9')
+	})
+
+	it('does not override ?class=all when the user resource resolves late', async () => {
+		window.history.replaceState({}, '', '/lms/courses?class=all')
+		const w: any = await mountCourses({})
+		w.user.data = { name: 'a@b.c', student_class: 'Class 9' }
+		await flushPromises()
+		expect(sent()).not.toHaveProperty('class')
 	})
 })

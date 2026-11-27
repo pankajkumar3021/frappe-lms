@@ -115,3 +115,25 @@ describe('registration guard', () => {
 		expect(stateCalls()).toHaveLength(0)
 	})
 })
+
+describe('markRegistered', () => {
+	it('keeps the cached class list while clearing needs_registration', async () => {
+		vi.resetModules()
+		state.callMock.mockResolvedValue({
+			needs_registration: true,
+			classes: ['Class 10'],
+			cities: ['Delhi'],
+			prefill: { full_name: '', contact_number: '' },
+		})
+		const { useRegistrationState } =
+			await import('@/composables/useRegistrationState')
+		const { getState, markRegistered } = useRegistrationState()
+		await getState()
+		markRegistered()
+		expect(await getState()).toMatchObject({
+			needs_registration: false,
+			classes: ['Class 10'],
+			cities: ['Delhi'],
+		})
+	})
+})

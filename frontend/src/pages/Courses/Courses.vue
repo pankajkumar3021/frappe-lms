@@ -129,6 +129,8 @@ const currentCategory = ref(null)
 const currentClass = ref(null)
 const classNames = ref([])
 const ALL_CLASSES = 'all'
+// True once the URL or the user has decided, so the default no longer applies.
+let classChosen = false
 const title = ref('')
 const certification = ref(false)
 
@@ -136,17 +138,23 @@ const setCertification = (value) => {
 	certification.value = value
 	updateCourses()
 }
-const classOptions = computed(() =>
-	classNames.value.length
-		? [
-				{ label: __('All classes'), value: ALL_CLASSES },
-				...classNames.value.map((name) => ({ label: name, value: name })),
-			]
-		: [],
-)
+// Never hide the control while a class filter is on: if the class list could not
+// be loaded, the active class is still offered so the student can switch off.
+const classOptions = computed(() => {
+	const names = [...classNames.value]
+	if (currentClass.value && !names.includes(currentClass.value)) {
+		names.push(currentClass.value)
+	}
+	if (!names.length) return []
+	return [
+		{ label: __('All classes'), value: ALL_CLASSES },
+		...names.map((name) => ({ label: name, value: name })),
+	]
+})
 const classSelection = computed({
 	get: () => currentClass.value || ALL_CLASSES,
 	set: (value) => {
+		classChosen = true
 		currentClass.value = !value || value === ALL_CLASSES ? null : value
 		updateCourses()
 	},
@@ -159,6 +167,17 @@ const loadClassNames = async () => {
 		classNames.value = []
 	}
 }
+// The user resource can resolve after this page mounts. Apply the student's
+// class then, unless the URL or the user already chose.
+watch(
+	() => user.data?.student_class,
+	(studentClass) => {
+		loadClassNames()
+		if (!studentClass || classChosen || currentClass.value) return
+		currentClass.value = studentClass
+		updateCourses()
+	},
+)
 const filters = ref({})
 const currentTab = ref('live')
 const { brand } = sessionStore()
@@ -178,6 +197,7 @@ const setFiltersFromQuery = () => {
 	currentCategory.value = queries.get('category') || null
 	// ?class=all is the saved "All classes", so the default is not re-applied.
 	const classQuery = queries.get('class')
+	classChosen = Boolean(classQuery)
 	currentClass.value = classQuery
 		? classQuery === ALL_CLASSES
 			? null
@@ -259,6 +279,7 @@ const categories = createListResource({
 
 const clearFilters = () => {
 	currentCategory.value = null
+	classChosen = true
 	currentClass.value = null
 	certification.value = false
 	// The title watcher reloads on its own; reloading here as well fetches twice.

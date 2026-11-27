@@ -32,13 +32,20 @@ export function useRegistrationState() {
 		}
 	}
 
+	// Keep the cached class and city lists: the Courses page reads them right after
+	// registration in the same app load.
 	function markRegistered() {
-		pending = Promise.resolve({
+		const empty: RegistrationState = {
 			needs_registration: false,
 			classes: [],
 			cities: [],
 			prefill: { full_name: '', contact_number: '' },
-		})
+		}
+		const previous = pending ?? Promise.resolve(empty)
+		pending = previous.then(
+			(state) => ({ ...state, needs_registration: false }),
+			() => empty,
+		)
 	}
 
 	return { getState, needsRegistration, markRegistered }
