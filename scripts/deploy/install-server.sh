@@ -127,6 +127,9 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:$APP_PORT;
+        # Without this nginx proxies as HTTP/1.0, and the app container's nginx
+        # only gzips HTTP/1.1 requests, so JS and CSS would go out uncompressed.
+        proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
