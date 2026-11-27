@@ -240,6 +240,13 @@
 			"translatable": 1
 		},
 		{
+			"fieldname": "student_class",
+			"fieldtype": "Data",
+			"insert_after": "city",
+			"label": "Class",
+			"read_only": 1
+		},
+		{
 			"fieldname": "college",
 			"fieldtype": "Data",
 			"insert_after": "desk_theme",

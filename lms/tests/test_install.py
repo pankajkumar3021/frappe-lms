@@ -43,6 +43,7 @@ USER_FIELDS = {
 	"company_type",
 	"headline",
 	"city",
+	"student_class",
 	"college",
 	"branch",
 }

@@ -64,7 +64,7 @@ from lms.lms.doctype.course_lesson.course_lesson import save_progress
 from lms.lms.doctype.lms_certificate.lms_certificate import evaluates_certificate, get_latest_certificate
 from lms.lms.doctype.lms_certificate_evaluation.lms_certificate_evaluation import can_evaluate
 from lms.lms.html_sanitizer import sanitize_rich_text
-from lms.lms.permissions import is_site_administrator
+from lms.lms.permissions import can_manage_registrations, is_site_administrator
 from lms.lms.sidebar import LEGACY_VISIBILITY_FIELDS, ROW_FIELDS, get_sidebar_rows
 from lms.lms.utils import (
 	LMS_ROLES,
@@ -103,7 +103,7 @@ def get_user_info():
 	user = frappe.db.get_value(
 		"User",
 		frappe.session.user,
-		["name", "email", "enabled", "user_image", "full_name", "user_type", "username", "bio", "headline"],
+		["name", "email", "enabled", "user_image", "full_name", "user_type", "username", "bio", "headline", "student_class"],
 		as_dict=1,
 	)
 	user["roles"] = frappe.get_roles(user.name)
@@ -113,6 +113,7 @@ def get_user_info():
 	user.is_student = not user.is_instructor and not user.is_moderator and not user.is_evaluator
 	user.is_fc_site = is_fc_site()
 	user.is_system_manager = "System Manager" in user.roles
+	user.can_manage_registrations = can_manage_registrations(user.name)
 	# Someone signed in without an LMS role is treated as a guest.
 	user.has_lms_role = has_lms_role() or user.is_system_manager
 	user.sitename = frappe.local.site
