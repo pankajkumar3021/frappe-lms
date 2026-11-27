@@ -12,7 +12,7 @@
 		:empty-title="emptyState?.title"
 		:empty-description="emptyState?.description"
 		:search-query="title"
-		:filtered="Boolean(currentCategory || certification)"
+		:filtered="Boolean(currentCategory || currentClass || certification)"
 		@load-more="courses.next()"
 		@clear-filters="clearFilters"
 	>
@@ -71,6 +71,13 @@
 				:ariaLabel="__('Category')"
 				@update:modelValue="updateCourses()"
 			/>
+			<ClearableCombobox
+				v-if="classOptions.length"
+				v-model="classSelection"
+				:options="classOptions"
+				:placeholder="__('Class')"
+				:ariaLabel="__('Class')"
+			/>
 			<ToggleFilter
 				:modelValue="certification"
 				:label="__('Certification')"
@@ -109,6 +116,7 @@ import { sessionStore } from '@/stores/session'
 import { canCreateCourse } from '@/utils'
 import CourseCard from '@/components/CourseCard.vue'
 import { useRouter } from 'vue-router'
+import { useRegistrationState } from '@/composables/useRegistrationState'
 import { openFormRoute } from '@/composables/useFormRoute'
 import { setFormSource } from '@/composables/formTracking'
 import { useTelemetry } from '@framework/ui/telemetry/index'
@@ -117,12 +125,39 @@ const user = inject('$user')
 const dayjs = inject('$dayjs')
 const start = ref(0)
 const currentCategory = ref(null)
+// null means "All classes". It starts on the student's own class.
+const currentClass = ref(null)
+const classNames = ref([])
+const ALL_CLASSES = 'all'
 const title = ref('')
 const certification = ref(false)
 
 const setCertification = (value) => {
 	certification.value = value
 	updateCourses()
+}
+const classOptions = computed(() =>
+	classNames.value.length
+		? [
+				{ label: __('All classes'), value: ALL_CLASSES },
+				...classNames.value.map((name) => ({ label: name, value: name })),
+			]
+		: [],
+)
+const classSelection = computed({
+	get: () => currentClass.value || ALL_CLASSES,
+	set: (value) => {
+		currentClass.value = !value || value === ALL_CLASSES ? null : value
+		updateCourses()
+	},
+})
+const loadClassNames = async () => {
+	if (!user.data) return
+	try {
+		classNames.value = (await useRegistrationState().getState()).classes || []
+	} catch (_) {
+		classNames.value = []
+	}
 }
 const filters = ref({})
 const currentTab = ref('live')
@@ -132,6 +167,7 @@ const router = useRouter()
 onMounted(() => {
 	setFiltersFromQuery()
 	updateCourses()
+	loadClassNames()
 	// TextInput emits on input and change; watched after query hydration to avoid a refetch.
 	watch(title, updateCourses)
 })
@@ -140,6 +176,13 @@ const setFiltersFromQuery = () => {
 	let queries = new URLSearchParams(location.search)
 	title.value = queries.get('title') || ''
 	currentCategory.value = queries.get('category') || null
+	// ?class=all is the saved "All classes", so the default is not re-applied.
+	const classQuery = queries.get('class')
+	currentClass.value = classQuery
+		? classQuery === ALL_CLASSES
+			? null
+			: classQuery
+		: user.data?.student_class || null
 	// `|| false` would keep the raw string, so ?certification=false read as on.
 	certification.value = queries.get('certification') === 'true'
 	const tab = queries.get('tab')
@@ -216,6 +259,7 @@ const categories = createListResource({
 
 const clearFilters = () => {
 	currentCategory.value = null
+	currentClass.value = null
 	certification.value = false
 	// The title watcher reloads on its own; reloading here as well fetches twice.
 	if (title.value) title.value = ''
@@ -238,6 +282,7 @@ const updateCourses = () => {
 
 const updateFilters = () => {
 	updateCategoryFilter()
+	updateClassFilter()
 	updateTitleFilter()
 	updateCertificationFilter()
 	updateTabFilter()
@@ -250,6 +295,14 @@ const updateCategoryFilter = () => {
 		filters.value['category'] = currentCategory.value
 	} else {
 		delete filters.value['category']
+	}
+}
+
+const updateClassFilter = () => {
+	if (currentClass.value) {
+		filters.value['class'] = currentClass.value
+	} else {
+		delete filters.value['class']
 	}
 }
 
@@ -313,7 +366,13 @@ const setQueryParams = () => {
 	let filterKeys = {
 		title: title.value,
 		category: currentCategory.value,
+		class: currentClass.value,
 		certification: certification.value,
+	}
+
+	// Without this, a reload would put the student's class back.
+	if (!currentClass.value && user.data?.student_class) {
+		filterKeys.class = ALL_CLASSES
 	}
 
 	Object.keys(filterKeys).forEach((key) => {
@@ -383,28 +442,28 @@ const emptyState = computed(() => {
 			return {
 				title: __('Publish your first course'),
 				description: __(
-					'Turn what you know into lessons, quizzes and a certificate people can take at their own pace.'
+					'Turn what you know into lessons, quizzes and a certificate people can take at their own pace.',
 				),
 			}
 		case 'upcoming':
 			return {
 				title: __('No upcoming courses'),
 				description: __(
-					'Courses marked as upcoming show up here, so learners can see what is coming next.'
+					'Courses marked as upcoming show up here, so learners can see what is coming next.',
 				),
 			}
 		case 'created':
 			return {
 				title: __('No courses created by you'),
 				description: __(
-					'Courses you create or teach show up here, for your team, students or customers.'
+					'Courses you create or teach show up here, for your team, students or customers.',
 				),
 			}
 		case 'unpublished':
 			return {
 				title: __('No unpublished courses'),
 				description: __(
-					'New courses wait here while you build them. Publish one when it is ready.'
+					'New courses wait here while you build them. Publish one when it is ready.',
 				),
 			}
 		default:
