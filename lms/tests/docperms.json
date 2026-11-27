@@ -991,6 +991,14 @@
 			"export"
 		]
 	},
+	"Student Registration": {
+		"Moderator#0": [
+			"read",
+			"write",
+			"report",
+			"export"
+		]
+	},
 	"User Skill": {
 		"LMS Student#0": [
 			"read",

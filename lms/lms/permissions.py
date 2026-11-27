@@ -783,6 +783,30 @@ def is_chat_student(user: str | None = None) -> bool:
 	return not frappe.db.exists("Has Role", {"parent": user, "role": ("in", CHAT_STAFF_ROLES)})
 
 
+# Who works the Student Registration follow-up list. Course Creators are not team.
+REGISTRATION_TEAM_ROLES = ("Moderator", CHAT_ADMIN_ROLE, "System Manager")
+
+
+def can_manage_registrations(user: str | None = None) -> bool:
+	"""Whether `user` is on the registration team (see REGISTRATION_TEAM_ROLES)."""
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	if user == "Guest":
+		return False
+	return bool(set(frappe.get_roles(user)) & set(REGISTRATION_TEAM_ROLES))
+
+
+def registration_has_permission(doc, ptype="read", user=None) -> bool:
+	"""Students never reach a registration through the DocType, their own included."""
+	return can_manage_registrations(user)
+
+
+def registration_query_conditions(user=None, doctype=None) -> str:
+	"""List-read counterpart of :func:`registration_has_permission`, as SQL."""
+	return "" if can_manage_registrations(user) else "1=0"
+
+
 def refuse_unpermitted_publish(doc, message: str) -> None:
 	"""Refuse a change to `doc.published` (including creating it published) by anyone
 	who may not publish. `message` is the translated refusal. Installs, patches and
