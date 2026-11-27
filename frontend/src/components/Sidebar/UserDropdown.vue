@@ -29,16 +29,21 @@ import { convertToTitleCase } from '@/utils'
 import { setThemePreference, themePreference } from '@/utils/theme'
 import { usersStore } from '@/stores/user'
 import { useSettings } from '@/stores/settings'
-import { h, computed } from 'vue'
+import { h, computed, defineAsyncComponent } from 'vue'
 import { createDialog } from '@/utils/dialogs'
 import FrappeCloudIcon from '@/components/Icons/FrappeCloudIcon.vue'
 import LMSLogo from '@/components/Icons/LMSLogo.vue'
-import SettingsModal from '@/components/Settings/Settings.vue'
 import { canOpenSettings } from '@/components/Settings/settings'
 import { safeUrl } from '@/utils/safeUrl'
 import { openExternal } from '@/utils/openExternal'
 import { pushSettingsHash } from '@/composables/useSettingsHash'
 import { isV1CloudAdmin } from '@/composables/cloudSettings'
+
+// Settings brings every settings panel and the rich text editor, and every
+// page draws this menu, so it loads only for someone who can open it.
+const SettingsModal = defineAsyncComponent(() =>
+	import('@/components/Settings/Settings.vue')
+)
 
 const router = useRouter()
 const { logout, branding } = sessionStore()

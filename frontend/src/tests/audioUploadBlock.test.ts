@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { Upload } from '@/utils/upload'
 
 vi.hoisted(() => {
@@ -20,21 +21,32 @@ vi.stubGlobal(
 	vi.fn(async () => new Response('{"message": {}}')),
 )
 
+// The player loads on first use (utils/upload.ts): wait for the import, then
+// the render.
+const settled = async () => {
+	await vi.dynamicImportSettled()
+	await flushPromises()
+}
+
 // The editor mounts each upload block as its own Vue app, so a component test that
 // passes __ in by hand cannot see a block that fails to render here.
 describe('an audio block in the lesson editor', () => {
-	it.each(['MP3', 'm4a'])('draws the player for a %s file', (fileType) => {
-		const tool = new Upload({
-			data: {
-				file_url: `/private/files/talk.${fileType.toLowerCase()}`,
-				file_type: fileType,
-			},
-			readOnly: false,
-		})
-		const block = tool.render()
+	it.each(['MP3', 'm4a'])(
+		'draws the player for a %s file',
+		async (fileType) => {
+			const tool = new Upload({
+				data: {
+					file_url: `/private/files/talk.${fileType.toLowerCase()}`,
+					file_type: fileType,
+				},
+				readOnly: false,
+			})
+			const block = tool.render()
+			await settled()
 
-		expect(block.querySelector('[data-testid="audio-player"]')).not.toBeNull()
-	})
+			expect(block.querySelector('[data-testid="audio-player"]')).not.toBeNull()
+		}
+	)
 })
 
 describe('a pasted audio link in the lesson editor', () => {
@@ -45,8 +57,9 @@ describe('a pasted audio link in the lesson editor', () => {
 		return { tool, block }
 	}
 
-	it('becomes a player for a file on another host, without the uploader', () => {
+	it('becomes a player for a file on another host, without the uploader', async () => {
 		const { tool, block } = paste('https://lms.b-cdn.net/talks/intro.m4a')
+		await settled()
 
 		expect(block.querySelector('[data-testid="audio-player"]')).not.toBeNull()
 		expect(block.textContent).not.toContain('Upload File')

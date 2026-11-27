@@ -1,15 +1,23 @@
 import { Pencil } from 'lucide-vue-next'
 import { registerDirectives } from '@/directives'
-import { createApp, h, markRaw } from 'vue'
+import { createApp, h, markRaw, defineAsyncComponent } from 'vue'
 import type { App } from 'vue'
 import type { BlockAPI } from '@editorjs/editorjs'
-import AssessmentPlugin from '@/components/AssessmentPlugin.vue'
 import translationPlugin from '../translation'
 import { call } from 'frappe-ui'
 import router from '@/router'
 import { mountBlock, mountPreview } from '@/utils/blockMount'
 import AssessmentBlock from '@/components/Assessment/AssessmentBlock.vue'
-import AssignmentCard from '@/components/Assignment.vue'
+
+// Loaded on first use: utils/index.js imports this tool, and almost every page
+// imports utils/index.js, so a static import puts this component (and what it
+// pulls in, such as the rich text editor) on the first page of the whole app.
+const AssessmentPlugin = defineAsyncComponent(
+	() => import('@/components/AssessmentPlugin.vue')
+)
+const AssignmentCard = defineAsyncComponent(
+	() => import('@/components/Assignment.vue')
+)
 
 type AssignmentData = { assignment?: string }
 

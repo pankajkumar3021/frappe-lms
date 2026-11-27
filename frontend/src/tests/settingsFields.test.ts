@@ -221,11 +221,13 @@ describe('SettingsFields draws the Content label the same either side of Use HTM
 	it('names the rich text editor by its label', async () => {
 		const w = await mountWithRichText([richField])
 		const labelId = w.get('[data-slot="label"]').attributes('id')
-		const editor = w.getComponent({ name: 'RichTextEditor' })
+		// SettingsFields loads the editor on first use, so the stub stands in for
+		// the async wrapper and receives the editor's props as attributes.
+		const editor = w.get('rich-text-editor-stub')
 
 		expect(labelId).toBeTruthy()
-		expect(editor.props('ariaLabelledby')).toBe(labelId)
-		expect(editor.props('ariaRequired')).toBe(true)
+		expect(editor.attributes('aria-labelledby')).toBe(labelId)
+		expect(editor.attributes('aria-required')).toBe('true')
 	})
 })
 
