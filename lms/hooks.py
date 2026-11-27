@@ -438,6 +438,7 @@ standard_sidebar_items = [
 	{"name1": "certifications", "is_standard": 1, "item_type": "Built-in"},
 	{"name1": "jobs", "is_standard": 1, "item_type": "Built-in"},
 	{"name1": "statistics", "is_standard": 1, "item_type": "Built-in"},
+	{"name1": "registrations", "is_standard": 1, "item_type": "Built-in"},
 	{"name1": "contact_us", "is_standard": 1, "item_type": "Built-in"},
 	{"name1": "quizzes", "is_standard": 1, "item_type": "Built-in"},
 	{"name1": "assignments", "is_standard": 1, "item_type": "Built-in"},

@@ -597,6 +597,14 @@ const getSidebarItems = (forMobile = false) => {
 					activeFor: ['Statistics'],
 				},
 				{
+					label: 'Registrations',
+					icon: 'PhoneCall',
+					to: 'Registrations',
+					activeFor: ['Registrations'],
+					condition: () =>
+						userResource.data?.can_manage_registrations,
+				},
+				{
 					label: 'Contact Us',
 					icon: settings.data?.contact_us_url ? 'Headset' : 'Mail',
 					to: settings.data?.contact_us_url

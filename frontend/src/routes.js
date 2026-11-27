@@ -154,6 +154,21 @@ export const routes = [
 		component: () => import('@/pages/Statistics.vue'),
 	},
 	{
+		path: '/registrations',
+		name: 'Registrations',
+		component: () => import('@/pages/Registrations.vue'),
+		// The store is loaded here, not at the top: this module must stay free of
+		// the stores so tests can import the real route table. The global guard
+		// has already awaited the user by the time this runs.
+		beforeEnter: async () => {
+			const { usersStore } = await import('@/stores/user')
+			const { userResource } = usersStore()
+			return userResource.data?.can_manage_registrations
+				? true
+				: { name: 'Home' }
+		},
+	},
+	{
 		path: '/user/:username',
 		name: 'Profile',
 		component: () => import('@/pages/Profile.vue'),

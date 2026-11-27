@@ -125,6 +125,7 @@ const ICON_CLASSES: Record<string, string> = {
 	GraduationCap: 'lucide-graduation-cap',
 	Briefcase: 'lucide-briefcase',
 	TrendingUp: 'lucide-trending-up',
+	PhoneCall: 'lucide-phone-call',
 	Headset: 'lucide-headset',
 	Mail: 'lucide-mail',
 	CircleHelp: 'lucide-circle-help',
