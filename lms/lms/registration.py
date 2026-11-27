@@ -108,7 +108,11 @@ def submit_registration(
 		}
 	)
 	# nosemgrep: lms-unjustified-ignore-permissions - students have no DocPerm on Student Registration; the row is for session.user only and every field is validated above
-	registration.insert(ignore_permissions=True)
+	try:
+		registration.insert(ignore_permissions=True)
+	except frappe.DuplicateEntryError:
+		# Two tabs or a double click can both pass the exists() check above.
+		frappe.throw(_("You are already registered."), frappe.ValidationError)
 
 	first_name, _sep, last_name = full_name.partition(" ")
 	frappe.db.set_value(

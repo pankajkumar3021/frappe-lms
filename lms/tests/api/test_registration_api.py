@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 
 from lms.lms.api import get_user_info
@@ -64,7 +66,10 @@ class TestRegistrationApi(BaseTestUtils):
 		self._create_evaluator(instructor.email)
 		course = self._create_course(title=f"Reg Course {hash}", instructor=instructor.email)
 		batch = self._create_batch(
-			course=course.name, instructor=instructor.email, title=f"Reg Batch {hash}", evaluator=instructor.email
+			course=course.name,
+			instructor=instructor.email,
+			title=f"Reg Batch {hash}",
+			evaluator=instructor.email,
 		)
 		student = self._student()
 		self._create_batch_enrollment(student.email, batch.name)
@@ -120,6 +125,16 @@ class TestRegistrationApi(BaseTestUtils):
 			self._submit()
 		self.assertIn("already registered", str(caught.exception))
 		self.assertNotIsInstance(caught.exception, frappe.UniqueValidationError)
+
+	def test_concurrent_duplicate_says_already_registered(self):
+		"""A second request that passed the exists() check still gets the friendly error."""
+		frappe.set_user(self._student().email)
+		self._submit()
+		with patch("lms.lms.registration.frappe.db.exists", return_value=False):
+			with self.assertRaises(frappe.ValidationError) as caught:
+				self._submit()
+		self.assertIn("already registered", str(caught.exception))
+		self.assertNotIsInstance(caught.exception, frappe.DuplicateEntryError)
 
 	def test_submit_grants_no_roles(self):
 		student = self._student()
