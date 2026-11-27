@@ -386,6 +386,11 @@ export const routes = [
 		component: () => import('@/pages/Setup.vue'),
 	},
 	{
+		path: '/registration',
+		name: 'Registration',
+		component: () => import('@/pages/Registration.vue'),
+	},
+	{
 		path: '/persona',
 		redirect: { name: 'Setup' },
 	},
@@ -414,9 +419,7 @@ export const routes = [
 		path: '/programming-exercises/submissions',
 		name: 'ProgrammingExerciseSubmissions',
 		component: () =>
-			import(
-				'@/pages/ProgrammingExercises/ProgrammingExerciseSubmissions.vue'
-			),
+			import('@/pages/ProgrammingExercises/ProgrammingExerciseSubmissions.vue'),
 		props: true,
 	},
 	{
@@ -425,9 +428,7 @@ export const routes = [
 		path: '/programming-exercise-submission/:exerciseID/:submissionID',
 		name: 'ProgrammingExerciseSubmission',
 		component: () =>
-			import(
-				'@/pages/ProgrammingExercises/ProgrammingExerciseSubmission.vue'
-			),
+			import('@/pages/ProgrammingExercises/ProgrammingExerciseSubmission.vue'),
 		props: true,
 	},
 	{

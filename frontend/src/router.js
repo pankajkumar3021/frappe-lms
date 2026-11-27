@@ -5,6 +5,7 @@ import { sessionStore } from './stores/session'
 import { useSettings } from './stores/settings'
 import { getLmsBasePath } from './utils/basePath'
 import { routes } from './routes'
+import { useRegistrationState } from './composables/useRegistrationState'
 
 // Run the fresh-site-admin setup check at most once per app load.
 let setupChecked = false
@@ -78,6 +79,18 @@ export async function guardNavigation(to, from, next) {
 		} catch (_) {
 			// Fail open for this navigation; the next one asks again.
 		}
+	}
+
+	// A new student fills in the registration form before any other page. The
+	// state call fails open, and the Registration page itself is always allowed,
+	// so the gate cannot loop.
+	if (
+		isLoggedIn &&
+		to.name !== 'Registration' &&
+		userResource.data?.is_student &&
+		(await useRegistrationState().needsRegistration())
+	) {
+		return next({ name: 'Registration' })
 	}
 
 	return next()
