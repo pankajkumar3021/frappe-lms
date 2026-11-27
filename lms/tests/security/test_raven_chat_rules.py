@@ -313,6 +313,16 @@ class TestRavenChatStudentRules(BaseTestUtils):
 		raven_chat.ensure_chat_admin_role()
 		self.assertEqual(frappe.db.get_value("Role", "Admin", "desk_access"), 0)
 
+	def test_a_fresh_install_turns_the_admin_role_off_desk(self):
+		"""install-app runs after_sync, not after_migrate or patches, and the DocType sync
+		creates the Admin role (named in Student Registration's permissions) with desk access."""
+		from lms.install import after_sync
+
+		raven_chat.ensure_chat_admin_role()
+		frappe.db.set_value("Role", "Admin", "desk_access", 1)
+		after_sync()
+		self.assertEqual(frappe.db.get_value("Role", "Admin", "desk_access"), 0)
+
 	def test_an_admin_is_chat_staff_in_every_workspace(self):
 		"""Given the Admin role, a person gets a Raven profile and joins every workspace,
 		so they can be picked for any channel, and counts as staff, not a student."""

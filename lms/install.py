@@ -5,6 +5,7 @@ from frappe.search.sqlite_search import build_index_in_background
 
 from lms.lms.api import give_discussions_permission
 from lms.lms.enrollment_constraints import ensure_enrollment_unique_constraints
+from lms.lms.raven_chat import ensure_chat_admin_role
 from lms.lms.sidebar import seed_sidebar_items
 
 LEGACY_USER_FIELDS = ["profile_complete"]
@@ -48,6 +49,9 @@ def after_sync():
 	create_lms_roles()
 	set_default_certificate_print_format()
 	give_lms_roles_to_admin()
+	# install-app runs neither after_migrate nor patches, and the DocType sync makes the
+	# Admin role (named in Student Registration's permissions) with desk access on.
+	ensure_chat_admin_role()
 
 
 def before_uninstall():
