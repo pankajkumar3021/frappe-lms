@@ -69,6 +69,9 @@
 					<a href="/login" class="lp-btn-outline hidden sm:inline-flex">{{
 						__('Login')
 					}}</a>
+					<a href="/login" class="lp-btn-primary hidden sm:inline-flex">{{
+						__('Register')
+					}}</a>
 					<button
 						type="button"
 						class="lp-menu-button xl:hidden"
@@ -145,7 +148,8 @@
 			>
 				{{ link.label }}
 			</a>
-			<a href="/login" class="lp-btn-primary mt-3">{{ __('Login') }}</a>
+			<a href="/login" class="lp-btn-primary mt-3">{{ __('Register') }}</a>
+			<a href="/login" class="lp-btn-outline mt-2">{{ __('Login') }}</a>
 		</div>
 
 		<div

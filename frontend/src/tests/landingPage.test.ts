@@ -379,4 +379,22 @@ describe('Landing page', () => {
 		expect(wrapper.find('a[href="/login"]').exists()).toBe(true)
 		wrapper.unmount()
 	})
+
+	it('offers Register beside Login, in the header and the mobile menu', async () => {
+		const wrapper = mountLanding()
+		await flushPromises()
+
+		const register = (scope) =>
+			scope.findAll('a').filter((a) => a.text() === 'Register')
+		const header = wrapper.find('header.lp-nav')
+		expect(register(header)).toHaveLength(1)
+		expect(register(header)[0].attributes('href')).toBe('/login')
+
+		await wrapper.find('.lp-menu-button').trigger('click')
+		const menu = wrapper.find('#lp-mobile-menu')
+		expect(register(menu)).toHaveLength(1)
+		expect(register(menu)[0].attributes('href')).toBe('/login')
+		expect(menu.find('a[href="/login"]').exists()).toBe(true)
+		wrapper.unmount()
+	})
 })
