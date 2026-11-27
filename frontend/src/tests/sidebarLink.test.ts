@@ -19,6 +19,9 @@ vi.mock('@/stores/settings', () => ({ useSettings: () => settings }))
 vi.mock('@/stores/notifications', () => ({ toggleNotifications }))
 vi.mock('@/utils/openExternal', () => ({ openExternal }))
 vi.mock('@/components/ContactUsEmail.vue', () => ({
+	// SidebarLink loads this on first use; Vue's async loader takes `default`
+	// only from a module it recognises as one.
+	__esModule: true,
 	default: {
 		name: 'ContactUsEmail',
 		props: ['modelValue'],
@@ -97,6 +100,9 @@ describe('SidebarLink', () => {
 	it('opens the contact form for an address without a scheme', async () => {
 		const { wrapper } = await build({ to: 'help@example.com' })
 		await control(wrapper).trigger('click')
+		// The form loads on first use (SidebarLink.vue).
+		await vi.dynamicImportSettled()
+		await flushPromises()
 		expect(wrapper.find('[data-contact]').attributes('data-open')).toBe('true')
 	})
 

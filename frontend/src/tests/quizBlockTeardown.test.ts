@@ -110,6 +110,8 @@ const renderQuizBlock = async (): Promise<Quiz> => {
 	const tool = new Quiz({ data: { quiz: 'quiz-a' }, readOnly: true })
 	document.body.append(tool.render())
 	tools.push(tool)
+	// The quiz component loads on first use (utils/quiz.ts).
+	await vi.dynamicImportSettled()
 	await flushPromises()
 	return tool
 }

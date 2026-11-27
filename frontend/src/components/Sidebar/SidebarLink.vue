@@ -30,15 +30,20 @@
 </template>
 <script setup lang="ts">
 import { KeyboardShortcut, SidebarItem, Tooltip } from 'frappe-ui'
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import ContactUsEmail from '@/components/ContactUsEmail.vue'
 import * as icons from 'lucide-vue-next'
 import { toggleNotifications } from '@/stores/notifications'
 import { useSettings } from '@/stores/settings'
 import type { SidebarLink } from '@/types'
 import { openExternal } from '@/utils/openExternal'
 import { safeUrl } from '@/utils/safeUrl'
+
+// The contact form brings the rich text editor, and every page draws the
+// sidebar, so it loads only when the form is opened.
+const ContactUsEmail = defineAsyncComponent(
+	() => import('@/components/ContactUsEmail.vue')
+)
 
 interface Target {
 	route?: { name: string }

@@ -88,6 +88,8 @@ const blockTools = [
 const renderTool = async (tool: Tool) => {
 	tools.push(tool)
 	document.body.append(tool.render())
+	// The picker loads on first use (utils/quiz.ts and its siblings).
+	await vi.dynamicImportSettled()
 	await flushPromises()
 	return tool
 }

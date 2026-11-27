@@ -322,13 +322,26 @@
 import { FormControl, Password, Select } from 'frappe-ui'
 import { InputDescription, InputLabel } from 'frappe-ui/experimental'
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
-import { nextTick, onBeforeUnmount, reactive, ref, useId, watch } from 'vue'
+import {
+	defineAsyncComponent,
+	nextTick,
+	onBeforeUnmount,
+	reactive,
+	ref,
+	useId,
+	watch,
+} from 'vue'
 import Link from '@/components/Controls/Link.vue'
 import ImageUploadField from '@/components/Controls/ImageUploadField.vue'
-import RichTextEditor from '@/components/RichTextEditor.vue'
 import CautionIcon from '@/components/Controls/CautionIcon.vue'
 import SettingsCodeField from './SettingsCodeField.vue'
 import { seedCheckboxDefaults } from '@/components/Settings/Mobile/mobileRows'
+
+// The settings panels are imported by the user menu on every page; the editor
+// loads only when a panel with a rich text field is drawn.
+const RichTextEditor = defineAsyncComponent(() =>
+	import('@/components/RichTextEditor.vue')
+)
 
 // is_private="!field.public" is written inline deliberately: privacy is the
 // FIELD's decision, not this component's. Third-party <Gateway> Settings

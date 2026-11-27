@@ -92,7 +92,15 @@ describe('the assignment block in a lesson', () => {
 		await renderInLesson({ studentView: false })
 
 		const { props } = mountedWith()
-		expect(props.is.name).toBe('Assignment')
+		// The card loads on first use (utils/assignment.ts), so name what the
+		// async wrapper resolves to.
+		const loaded = await (
+			props.is as unknown as {
+				__asyncLoader: () => Promise<{ default: { name: string } }>
+			}
+		).__asyncLoader()
+		const card = loaded.default
+		expect(card.name).toBe('Assignment')
 		expect(props.props).toEqual({
 			assignmentID: 'ASSIGN-1',
 			submissionName: 'SUB-0001',

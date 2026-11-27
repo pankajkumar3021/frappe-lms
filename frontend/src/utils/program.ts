@@ -1,15 +1,23 @@
-import { createApp, h, markRaw } from 'vue'
+import { createApp, h, markRaw, defineAsyncComponent } from 'vue'
 import type { App } from 'vue'
 import type { BlockAPI } from '@editorjs/editorjs'
 import { registerDirectives } from '@/directives'
 import { Code } from 'lucide-vue-next'
 import translationPlugin from '@/translation'
-import ProgrammingExerciseModal from '@/components/Modals/ProgrammingExerciseModal.vue'
 import { call } from 'frappe-ui'
 import { usersStore } from '@/stores/user'
 import { mountBlock, mountPreview } from '@/utils/blockMount'
 import AssessmentBlock from '@/components/Assessment/AssessmentBlock.vue'
-import ProgrammingExerciseSubmission from '@/pages/ProgrammingExercises/ProgrammingExerciseSubmission.vue'
+
+// Loaded on first use: utils/index.js imports this tool, and almost every page
+// imports utils/index.js, so a static import puts this component (and what it
+// pulls in, such as the rich text editor) on the first page of the whole app.
+const ProgrammingExerciseModal = defineAsyncComponent(
+	() => import('@/components/Modals/ProgrammingExerciseModal.vue')
+)
+const ProgrammingExerciseSubmission = defineAsyncComponent(
+	() => import('@/pages/ProgrammingExercises/ProgrammingExerciseSubmission.vue')
+)
 
 export class Program {
 	data: any

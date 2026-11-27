@@ -1,13 +1,21 @@
-import QuizBlock from '@/components/QuizBlock.vue'
 import { registerDirectives } from '@/directives'
-import AssessmentPlugin from '@/components/AssessmentPlugin.vue'
-import { createApp, h } from 'vue'
+import { createApp, h, defineAsyncComponent } from 'vue'
 import type { App } from 'vue'
 import type { BlockAPI } from '@editorjs/editorjs'
 import translationPlugin from '../translation'
 import { CircleHelp } from 'lucide-vue-next'
 import router from '@/router'
 import { mountBlock, mountPreview } from '@/utils/blockMount'
+
+// Loaded on first use: utils/index.js imports this tool, and almost every page
+// imports utils/index.js, so a static import puts this component (and what it
+// pulls in, such as the rich text editor) on the first page of the whole app.
+const QuizBlock = defineAsyncComponent(
+	() => import('@/components/QuizBlock.vue')
+)
+const AssessmentPlugin = defineAsyncComponent(
+	() => import('@/components/AssessmentPlugin.vue')
+)
 
 type QuizData = { quiz?: string }
 

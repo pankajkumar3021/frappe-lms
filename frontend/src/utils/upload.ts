@@ -1,9 +1,5 @@
-import AudioBlock from '@/components/AudioBlock.vue'
 import { registerDirectives } from '@/directives'
-import VideoBlock from '@/components/VideoBlock.vue'
-import PdfBlock from '@/components/PdfBlock.vue'
-import UploadPlugin from '@/components/UploadPlugin.vue'
-import { h, createApp } from 'vue'
+import { h, createApp, defineAsyncComponent } from 'vue'
 import type { App } from 'vue'
 import { Upload as UploadIcon } from 'lucide-vue-next'
 // @ts-expect-error utils/dialogs.js has no type declarations yet
@@ -13,6 +9,20 @@ import { embedFrame } from '@/utils/blockDom'
 import { safeUrl } from '@/utils/safeUrl'
 import translationPlugin from '../translation'
 import { AUDIO_LINK, fileExtension, isAudioType } from '@/utils/audio'
+
+// Loaded on first use: utils/index.js imports this tool, and almost every page
+// imports utils/index.js, so a static import puts this component (and what it
+// pulls in, such as the rich text editor) on the first page of the whole app.
+const AudioBlock = defineAsyncComponent(
+	() => import('@/components/AudioBlock.vue')
+)
+const VideoBlock = defineAsyncComponent(
+	() => import('@/components/VideoBlock.vue')
+)
+const PdfBlock = defineAsyncComponent(() => import('@/components/PdfBlock.vue'))
+const UploadPlugin = defineAsyncComponent(
+	() => import('@/components/UploadPlugin.vue')
+)
 
 // What the block saves: an uploaded file and, for a video, its in-video quizzes.
 interface UploadData {
